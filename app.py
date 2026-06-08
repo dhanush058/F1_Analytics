@@ -123,6 +123,20 @@ if st.sidebar.button("Analyze Performance"):
             
             st.plotly_chart(fig, use_container_width=True)
             
+            # 6. RESTORED GUIDE: Detailed Metric Explanations for Users
+            st.markdown("---")
+            tab1, tab2 = st.tabs(["💡 Live Telemetry Metric Guide", "📊 Why Spatial Distance Alignment Matters"])
+            with tab1:
+                st.subheader("How to Analyze the 3 Drivers")
+                st.markdown("""
+                * **Velocity Valleys (Speed Chart):** Look at the deep dips in the lines. These represent braking points and corners. Whichever driver's line stays highest at the absolute lowest point carried the best **minimum corner speed** at the apex.
+                * **Braking Points:** Where a line suddenly drops vertically reveals exactly where a driver smashed the brakes. You can spot who braved a later braking point.
+                * **Throttle Application (Throttle Chart):** Look at the slopes where the line climbs back from 0% to 100%. A steeper, faster climb means that driver achieved **exit traction** and pinned the gas pedal earlier, maximizing their top speed down the next straightway.
+                """)
+            with tab2:
+                st.subheader("Data Analyst Design Insight")
+                st.write("Traditional time-series graphs plot data against clock seconds. In Formula 1, if one driver brakes earlier, their entire timeline shifts forward, making direct visual overlays impossible to compare. By using a custom data pipeline to resample and normalize telemetry across **Track Distance (Meters)**, this dashboard locks all three profiles to the exact same physical coordinates. You are looking at an absolute, apples-to-apples performance breakdown at every single meter of the circuit.")
+            
         else:
             st.error("Could not fetch data for this specific selection. Ensure the chosen session has occurred and all selected drivers set valid laps.")
 else:
