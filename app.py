@@ -123,7 +123,7 @@ if analyze_btn:
             line_style = '-'    # Solid line for primary driver
             display_label = driver
 
-        # 1. Speed Profile Panel (Applies the new line_style)
+        # 1. Speed Profile Panel
         ax[1].plot(tel['Distance'], tel['Speed'], label=display_label, color=color, linestyle=line_style, linewidth=1.8, alpha=0.9)
         
         # 2. Throttle Application Panel
