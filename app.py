@@ -181,7 +181,7 @@ if st.sidebar.button("Analyze Performance"):
                         row=2, col=1
                     )
                 
-                # 5. Global Layout Styling (FIXED GRID OVERLAP)
+                # 5. Global Layout Styling (FIXED GRID AND AXIS WARPING OVERLAP)
                 fig.update_layout(
                     height=650,
                     template="plotly_dark",
@@ -193,11 +193,12 @@ if st.sidebar.button("Analyze Performance"):
                 fig.update_xaxes(title_text="Distance along track (meters)", row=2, col=1)
                 fig.update_yaxes(title_text="Speed (km/h)", row=1, col=1)
                 
-                # Force row 2 to strictly show its own independent 0-100% scale labels
+                # Force row 2 to be perfectly linear, evenly spaced, and entirely independent
                 fig.update_yaxes(
                     title_text="Throttle %", 
-                    range=[0, 105], 
+                    range=[-5, 105], 
                     tickvals=[0, 25, 50, 75, 100],
+                    matches=None,  # Breaks the visual grid/scale sync with Row 1's Speed scale
                     row=2, col=1
                 )
                 
