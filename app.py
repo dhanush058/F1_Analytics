@@ -67,7 +67,7 @@ driver_map = {
 driver_names = list(driver_map.keys())
 
 selected_d1_name = st.sidebar.selectbox("Driver 1", driver_names, index=0) # Defaults to George Russell
-selected_d2_name = st.sidebar.selectbox("Driver 2", driver_options=driver_names, index=1) # Defaults to Kimi Antonelli
+selected_d2_name = st.sidebar.selectbox("Driver 2", options=driver_names, index=1) # Fixed syntax error here
 
 driver3_options = ["None"] + driver_names
 selected_d3_name = st.sidebar.selectbox("Driver 3 (Optional)", driver3_options, index=0)
@@ -140,7 +140,6 @@ if st.sidebar.button("Analyze Performance"):
                 st.warning("⚠️ Telemetry Stream Processing Alert")
                 st.error("FastF1 has not fully populated telemetry logs for these specific driver laps yet. Try a different driver combination.")
             else:
-                # Reverse lookup map to display full names in chart legends/success messages
                 code_to_name = {v: k for k, v in driver_map.items()}
                 successful_names = [code_to_name[code] for code in successful_codes]
                 
@@ -151,7 +150,6 @@ if st.sidebar.button("Analyze Performance"):
                                     vertical_spacing=0.1,
                                     subplot_titles=("Velocity Comparison (Minimum Corner Speed)", "Throttle Application (Exit Traction)"))
                 
-                # Color map assignments based on technical codes
                 color_palette = {driver1: '#00FF00', driver2: '#1E90FF', driver3: '#FF4500'}
                 
                 for drv_code in successful_codes:
