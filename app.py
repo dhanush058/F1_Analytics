@@ -14,12 +14,24 @@ if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
 fastf1.Cache.enable_cache(CACHE_DIR)
 
+# Helper function to dynamically fetch the full season calendar
+@st.cache_data
+def get_season_circuits(selected_year):
+    try:
+        schedule = fastf1.get_event_schedule(selected_year)
+        # Filter out testing sessions, keep only official Grand Prix events
+        gp_events = schedule[schedule['EventFormat'] != 'testing']
+        return gp_events['EventName'].tolist()
+    except Exception:
+        # Fallback list just in case the API schedule endpoint fails
+        return ["Monaco", "Monza", "Silverstone", "Spa", "Melbourne", "Suzuka"]
+
 # 2. Sidebar Controls
 st.sidebar.header("Match Setup")
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024], index=0)
 
-# Circuits with completed data up to 2026
-circuit_options = ["Monaco", "Miami", "Shanghai", "Melbourne", "Suzuka", "Monza", "Silverstone", "Spa", "Austin", "Zandvoort"]
+# DYNAMIC CIRCUITS: Pulls every single race for the selected year instantly
+circuit_options = get_season_circuits(year)
 circuit = st.sidebar.selectbox("Circuit", circuit_options, index=0)
 
 session_type = st.sidebar.selectbox("Session", ["Q", "R"], index=0)
