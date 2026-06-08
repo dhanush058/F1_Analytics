@@ -175,17 +175,13 @@ def get_single_driver_telemetry(session, driver_code):
         if driver_laps.empty:
             return None
         
-        # Priority 1: Get fastest lap
-        target_lap = driver_laps.pick_fastest()
-        
-        # Priority 2: Fallback to final valid lap if fastest lap comes up empty
-        if target_lap is None or pd.isna(target_lap['LapTime']):
-            valid_timed_laps = driver_laps.dropna(subset=['LapTime'])
-            if not valid_timed_laps.empty:
-                target_lap = valid_timed_laps.iloc[-1]
-            else:
-                target_lap = driver_laps.iloc[-1]
-                
+        # FIX: Explicit manual fastest lap parsing to avoid pick_fastest API structural bugs
+        valid_laps = driver_laps.dropna(subset=['LapTime'])
+        if not valid_laps.empty:
+            target_lap = valid_laps.sort_values(by='LapTime').iloc[0]
+        else:
+            target_lap = driver_laps.iloc[-1] # Drop down to final recorded session row if no valid lap time exists
+            
         if target_lap is None or not hasattr(target_lap, 'get_telemetry'):
             return None
             
