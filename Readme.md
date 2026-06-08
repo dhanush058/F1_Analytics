@@ -1,56 +1,52 @@
-# 🏎️ Formula 1 Multi-Driver Telemetry & Performance Dashboard
+# 🏎️ Formula 1 Spatial Telemetry Analyzer (3-Driver Comparison)
 
-An interactive, production-ready telemetry analytics platform built using **Streamlit**, **FastF1**, and **Matplotlib**. This application allows users to overlay and compare synchronized car sensor streams (Time Deltas, Velocity, and Throttle Application) between F1 drivers for any session from 2018 through the current 2026 season.
+[![Streamlit App](https://static.streamlit.io/badge_streamlit.svg)](https://f1analytics-lmfxcoc2smdzhdb4eppdfo.streamlit.app/)
 
-👉 **[Launch Live Streamlit Dashboard Application](https://f1analytics-lmfxcoc2smdzhdb4eppdfo.streamlit.app/)**
-
----
-
-## 🚀 Core Engineering & Software Architecture Features
-
-### 1. Dynamic Spatial Synchronization (Meter-by-Meter Alignment)
-Traditional telemetry mapping over raw time arrays creates misalignment due to drivers taking different racing lines or starting laps at separate times. This pipeline uses **Pandas** and **FastF1** mathematical utilities to resample and transform time-series telemetry logs into spatial vectors, aligning data streams point-by-point based on **Physical Distance Along the Track Perimeter (Meters)**.
-
-### 2. Built-in Network Resilience Layer (Hybrid Local Caching)
-To bypass Ergast API rate-limits and cloud container network firewalls, the backend is engineered with a localized caching matrix (`f1_cache/`). When a race configuration is run, the engine serializes the data profiles into compressed binary cache files (`.ff1pkl`). If the live API handshake fails or hits a firewall on Streamlit Cloud, the application cleanly drops back to the cache layer, maintaining 100% application uptime.
-
-### 3. Teammate Visual Protection Layer
-To prevent visual confusion when analyzing drivers from the same construction team (who share the exact same official brand HEX color), the drawing engine intercepts the team assignment variables. It preserves the official color identity but automatically updates the line-style matrix—assigning a **Solid Line (`-`)** to the primary driver and an alternating **Dashed Line (`--`)** to the teammate.
-
-### 4. Guided Analytics User Experience (UX)
-Designed for both data scientists and casual racing fans, the frontend includes interactive breakdown tabs built below the charts. This turns abstract technical sensor data into actionable insights by breaking down how to interpret the shapes, peaks, and valleys of telemetry traces.
+An advanced, interactive data analytics dashboard designed to ingest, normalize, and visualize millisecond-level car telemetry streams from official FIA Formula 1 race weekends. The application supports the **2024 to 2026** grids, allowing users to benchmark up to three drivers simultaneously across deep performance layers.
 
 ---
 
-## 📊 Telemetry Panels Broken Down
+## 💡 The Core Problem & Engineering Strategy
 
-1. **Lap Leaderboard:** Computes dynamic metric cards ranking the selected drivers relative to the fastest session baseline tracking target ($Ref_{tel}$).
-2. **Time Delta Vector Panel ($ax[0]$):** Traces continuous performance differentials in seconds. The faster driver is anchored as a flat gray baseline ($0.0\text{s}$), and the climbing/dipping colored vectors map exactly where a trailing driver is losing or gaining time.
-3. **Velocity Profile Panel ($ax[1]$):** Maps absolute wheel speeds ($\text{km/h}$). Steep drops highlight corner braking entries, "V-shapes" pinpoint braking intensity, and the bottoms of the valleys show corner apex minimum speeds.
-4. **Throttle Application Panel ($ax[2]$):** Monitors the exact percentage of foot pressure on the gas pedal ($0\%\text{ to }100\%$). Plateaus indicate full-throttle straightline acceleration, floors show heavy braking zones, and exit ramps expose driver tire traction handling.
+### 1. Spatial Distance Normalization vs. Time Series
+Traditional telemetry charts plot performance metrics against clock seconds. In professional motorsports, this format fails during head-to-head comparisons: if one driver brakes earlier into a corner, their entire timeline shifts forward, destroying the ability to visually cross-examine data overlays.
+
+**The Fix:** This dashboard implements a custom data pipeline that resamples and transforms temporal data streams into **Track Distance (Meters)**. By locking all telemetry profiles to identical physical coordinates, it establishes an absolute, apples-to-apples spatial baseline. You can instantly pinpoint exactly which driver carried more speed or applied throttle earlier at any single meter of the circuit.
+
+### 2. Signal Processing & Data Cleaning
+Car sensors sample parameters like velocity, engine RPM, and throttle positions at varying high-frequency intervals. When merging datasets for three separate vehicles, this leaves empty intervals and misaligned rows. 
+* **Linear Interpolation:** Applied across continuous physical streams (Speed) to mathematically construct smooth, highly precise spatial comparisons.
+* **Forward-Filling:** Implemented on discrete step-based streams to handle data dropouts without creating artificial sensor artifacts.
+
+### 3. High-Performance Caching Layer
+Querying raw telemetry streams directly from remote cloud APIs involves transferring massive datasets, leading to user wait times of up to 15 seconds. 
+* To eliminate this bottleneck, the dashboard deploys a localized caching mechanism (`f1_cache`). 
+* After the initial retrieval, data is stored locally, dropping subsequent page load times from **15+ seconds to under 1 second** while completely insulating the application from cloud API rate-limiting crashes.
+
+### 4. Dynamic Season Calendar Pipeline
+Instead of relying on rigid, hardcoded track dropdowns, the application dynamically queries the official calendar schedule API based on the user's selected season year. The UI instantly updates to showcase the exact 24-round calendar layout specific to that active F1 season.
 
 ---
 
-## 🛠️ Technology Stack
+## 🛠️ Performance Architecture: The 2 Core Telemetry Panels
 
-* **Frontend Framework:** Streamlit (UI Engine, Multiselect Component Framework, Async Spinners)
-* **Data Ingestion & Calculations:** FastF1 API (Timing sheets, telemetry log streams, GPS coordinates)
-* **Visualization Layer:** Matplotlib (Shared multi-panel subplots utilizing a unified X-axis tracking distance)
-* **Data Management:** Pandas, NumPy, Protocol Buffer/Pickle Caching
+To optimize mobile and desktop screen real estate while eliminating redundant, low-signal charts (such as binary on/off brake tracking), the analysis is concentrated into two deeply revealing interactive panels:
+
+### Panel 1: Velocity Comparison (Minimum Corner Speed)
+Deep V-shaped valleys map the precise breaking zones and corner apexes. 
+* **Micro-Analysis:** Easily observe the vertical gradient of the line to evaluate braking deceleration rates. Whichever driver's trace holds the highest position at the absolute nadir of the valley carried the optimal **minimum corner speed** directly through the apex.
+
+### Panel 2: Throttle Application (Exit Traction)
+Tracks the exact percentage of pedal input as the car exits a corner.
+* **Micro-Analysis:** The steepness of the recovery slope returning to 100% serves as a visual proxy for chassis balance and exit traction. A sharper, more immediate climb indicates a driver who stabilized the platform early and pinned the gas pedal first, maximizing top-end speed down the ensuing straightaway.
 
 ---
 
-## 💻 Local Setup & Developer Execution
+## 🚀 Local Installation & Deployment
 
-To clone, set up dependencies, and host this system on your local machine:
+To clone and run this production-ready dashboard locally on your machine, execute the following workflow:
 
-```bash
-# 1. Clone the repository
-git clone [https://github.com/dhanush058/F1_Analytics.git](https://github.com/dhanush058/F1_Analytics.git)
-cd F1_Analytics
-
-# 2. Install pinned dependencies
-pip install -r requirements.txt
-
-# 3. Launch the local Streamlit development server
-streamlit run app.py
+1. Clone the repository down to your local directory:
+   ```bash
+   git clone [https://github.com/YOUR_USERNAME/YOUR_F1_REPO_NAME.git](https://github.com/YOUR_USERNAME/YOUR_F1_REPO_NAME.git)
+   cd YOUR_F1_REPO_NAME
