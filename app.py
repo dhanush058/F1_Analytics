@@ -1,9 +1,26 @@
+import subprocess
+import sys
 import os
+
+# ==============================================================================
+# 📦 DYNAMIC DEPENDENCY INJECTION LAYER (CRASH PROTECTION)
+# ==============================================================================
+try:
+    import matplotlib.pyplot as plt
+    import fastf1
+    import fastf1.plotting
+except ModuleNotFoundError:
+    # If Streamlit Cloud misses requirements.txt, force-install dependencies manually on startup
+    subprocess.check_call([
+        sys.executable, "-m", "pip", "install", 
+        "matplotlib", "fastf1", "pandas", "numpy", "streamlit"
+    ])
+    import matplotlib.pyplot as plt
+    import fastf1
+    import fastf1.plotting
+
 import streamlit as st
-import matplotlib.pyplot as plt
 import pandas as pd
-import fastf1
-import fastf1.plotting
 
 # ==============================================================================
 # 🛠️ GLOBAL ENVIRONMENT & STREAMLIT SETUP
