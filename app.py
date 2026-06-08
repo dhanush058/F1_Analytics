@@ -1,3 +1,12 @@
+To get **every single driver** who has raced between 2024 and 2026 with their full names properly mapped, we need to expand the master dictionary to include the complete grids from all three seasons.
+
+The list below includes all full-time drivers, rookies, mid-season replacements, and confirmed seat changes across those years (including entries like Franco Colapinto, Oliver Bearman, Kimi Antonelli, Gabriel Bortoleto, and Arvid Lindblad).
+
+If a driver enters a session who isn't explicitly in this massive dictionary, the app's dynamic filter will still catch them and safely display their raw 3-letter code instead of crashing.
+
+Here is your complete, fully realized `app.py`:
+
+```python
 import streamlit as st
 import fastf1
 import plotly.graph_objects as go
@@ -40,35 +49,78 @@ session_map = {"Qualifying": "Q", "Race": "R"}
 selected_session_label = st.sidebar.selectbox("Session", list(session_map.keys()), index=0)
 session_type = session_map[selected_session_label]
 
-# 3. Dynamic Driver Extractor Function (Prevents Cross-Year Crashes)
+# Complete Master Driver Dictionary across 2024, 2025, and 2026 grids
+MASTER_DRIVER_MAP = {
+    "Max Verstappen": "VER",
+    "Lando Norris": "NOR",
+    "Charles Leclerc": "LEC",
+    "Oscar Piastri": "PIA",
+    "Carlos Sainz": "SAI",
+    "Lewis Hamilton": "HAM",
+    "George Russell": "RUS",
+    "Sergio Perez": "PER",
+    "Fernando Alonso": "ALO",
+    "Lance Stroll": "STR",
+    "Nico Hulkenberg": "HUL",
+    "Yukis Tsunoda": "TSU",
+    "Alexander Albon": "ALB",
+    "Esteban Ocon": "OCO",
+    "Pierre Gasly": "GAS",
+    "Kevin Magnussen": "MAG",
+    "Valtteri Bottas": "BOT",
+    "Zhou Guanyu": "ZHO",
+    "Daniel Ricciardo": "RIC",
+    "Logan Sargeant": "SAR",
+    # Rookies, Mid-Season Replacements, and New Grid Debuts (2024-2026)
+    "Kimi Antonelli": "ANT",
+    "Oliver Bearman": "BEA",
+    "Franco Colapinto": "COL",
+    "Gabriel Bortoleto": "BOR",
+    "Liam Lawson": "LAW",
+    "Isack Hadjar": "HAD",
+    "Arvid Lindblad": "LIN",
+    "Jack Doohan": "DOO"
+}
+
+# Inverse map to safely turn abbreviation codes -> Full Names
+CODE_TO_NAME = {v: k for k, v in MASTER_DRIVER_MAP.items()}
+
+# 3. Dynamic Driver Filter (Matches session availability against our Master Full Name list)
 @st.cache_data(show_spinner=False)
 def get_active_session_drivers(year, round_num, session_type):
     try:
         session = fastf1.get_session(year, round_num, session_type)
         session.load(laps=True, telemetry=False, weather=False)
-        drivers = session.laps['Driver'].unique().tolist()
-        if not drivers:
-            raise ValueError()
-        return sorted(drivers)
+        active_codes = session.laps['Driver'].unique().tolist()
+        
+        # Build list of available full names based on who actually drove during this specific session
+        display_names = []
+        for code in active_codes:
+            if code in CODE_TO_NAME:
+                display_names.append(CODE_TO_NAME[code])
+            else:
+                display_names.append(code) # Fallback to raw code if an unmapped wild-card entry appears
+        return sorted(display_names)
     except Exception:
-        # Emergency fallbacks if live data streams are temporarily lagging
-        return ["VER", "NOR", "HAM", "RUS", "LEC", "SAI", "PIA", "GAS", "ALO", "PER"]
+        # Emergency complete full fallback if API list retrieval times out
+        return sorted(list(MASTER_DRIVER_MAP.keys()))
 
-# Fetch driver listings dynamically based on user selections above
-available_drivers = get_active_session_drivers(year, selected_round, session_type)
+# Get the clean list of Full Names available for this specific weekend
+available_full_names = get_active_session_drivers(year, selected_round, session_type)
 
 st.sidebar.markdown("---")
 st.sidebar.header("Driver Selection")
 
-# Establish safe indexes based on what drivers exist in the fetched year/session data
-d1_idx = 0
-d2_idx = min(1, len(available_drivers) - 1)
+d1_name = st.sidebar.selectbox("Driver 1", available_full_names, index=0)
+d2_name = st.sidebar.selectbox("Driver 2", available_full_names, index=min(1, len(available_full_names)-1))
 
-driver1 = st.sidebar.selectbox("Driver 1", available_drivers, index=d1_idx)
-driver2 = st.sidebar.selectbox("Driver 2", available_drivers, index=d2_idx)
+driver3_options = ["None"] + available_full_names
+d3_name = st.sidebar.selectbox("Driver 3 (Optional)", driver3_options, index=0)
 
-driver3_options = ["None"] + available_drivers
-driver3 = st.sidebar.selectbox("Driver 3 (Optional)", driver3_options, index=0)
+# Map selected full names back to raw codes for the FastF1 backend engine processing
+driver1 = MASTER_DRIVER_MAP.get(d1_name, d1_name)
+driver2 = MASTER_DRIVER_MAP.get(d2_name, d2_name)
+driver3 = "None" if d3_name == "None" else MASTER_DRIVER_MAP.get(d3_name, d3_name)
 
 # Clear Cache Option to fix corrupted file downloads instantly
 st.sidebar.markdown("---")
@@ -97,7 +149,6 @@ def get_single_driver_telemetry(session, driver_code):
 def process_race_session(year, round_num, session_type, d1, d2, d3):
     session = fastf1.get_session(year, round_num, session_type)
     
-    # Robust Retry Loop to handle heavy server loading seamlessly
     for attempt in range(2):
         try:
             session.load(laps=True, telemetry=True, weather=False)
@@ -150,7 +201,8 @@ if st.sidebar.button("Analyze Performance"):
                 st.warning("⚠️ Telemetry Stream Processing Alert")
                 st.error(f"Incomplete dataset returned for this pairing. Turn on 'Force Refresh Live Data' in the sidebar and rerun to re-download pristine tracking files.")
             else:
-                st.success(f"Successfully mapped spatial coordinates for: {', '.join(successful_codes)}!")
+                successful_names = [CODE_TO_NAME.get(code, code) for code in successful_codes]
+                st.success(f"Successfully mapped spatial coordinates for: {', '.join(successful_names)}!")
                 
                 # 5. Build Plots safely using only validated data streams
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
@@ -162,10 +214,11 @@ if st.sidebar.button("Analyze Performance"):
                 for drv_code in successful_codes:
                     df = telemetry_data[drv_code]
                     drv_color = color_palette.get(drv_code, '#FFFFFF')
+                    full_display_name = CODE_TO_NAME.get(drv_code, drv_code)
                     
                     # --- ROW 1: VELOCITY ---
                     fig.add_trace(
-                        go.Scatter(x=df['Distance'], y=df['Speed'], mode='lines', name=drv_code,
+                        go.Scatter(x=df['Distance'], y=df['Speed'], mode='lines', name=full_display_name,
                                    line=dict(color=drv_color, width=2),
                                    hovertemplate="Distance: %{x:.0f}m<br>Speed: %{y:.1f} km/h<extra></extra>"),
                         row=1, col=1
@@ -173,7 +226,7 @@ if st.sidebar.button("Analyze Performance"):
                     
                     # --- ROW 2: THROTTLE ---
                     fig.add_trace(
-                        go.Scatter(x=df['Distance'], y=df['Throttle'], mode='lines', name=drv_code,
+                        go.Scatter(x=df['Distance'], y=df['Throttle'], mode='lines', name=full_display_name,
                                    line=dict(color=drv_color, width=2), showlegend=False,
                                    hovertemplate="Distance: %{x:.0f}m<br>Throttle: %{y:.1f}%<extra></extra>"),
                         row=2, col=1
@@ -223,3 +276,5 @@ if st.sidebar.button("Analyze Performance"):
                     st.write("Traditional time-series graphs plot data against clock seconds. In Formula 1, if one driver brakes earlier, their entire timeline shifts forward, making direct visual overlays impossible to compare. By using a custom data pipeline to resample and normalize telemetry across Track Distance (Meters), this dashboard locks all selected profiles to the exact same physical coordinates. You are looking at an absolute, apples-to-apples performance breakdown at every single meter of the circuit.")
 else:
     st.info("Select options in the sidebar and click 'Analyze Performance' to synchronize live data profiles.")
+
+```
