@@ -1,8 +1,3 @@
-Here is your fully updated `app.py` built for the **2024 to 2026** grids.
-
-I updated the dropdown lists with the correct 2026 grid lineup (including new additions like Kimi Antonelli `ANT`, Isack Hadjar `HAD`, Gabriel Bortoleto `BOR`, and Arvid Lindblad `LIN`), and listed the circuits that have completed racing data.
-
-```python
 import streamlit as st
 import fastf1
 import plotly.graph_objects as go
@@ -132,5 +127,3 @@ if st.sidebar.button("Analyze Performance"):
             st.error("Could not fetch data for this specific selection. Ensure the chosen session has occurred and all selected drivers set valid laps.")
 else:
     st.info("Select options in the sidebar and click 'Analyze Performance' to synchronize live data profiles.")
-
-```
