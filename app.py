@@ -34,12 +34,10 @@ selected_event_name = st.sidebar.selectbox("Circuit", event_names, index=0)
 
 selected_round = event_options[event_names.index(selected_event_name)][1]
 
-# UI Session Map: Friendly labels map directly to FastF1 API codes
 session_map = {"Qualifying": "Q", "Race": "R"}
 selected_session_label = st.sidebar.selectbox("Session", list(session_map.keys()), index=0)
 session_type = session_map[selected_session_label]
 
-# UI Driver Map: Maps readable Full Names directly to official 3-letter codes
 driver_map = {
     "George Russell": "RUS",
     "Kimi Antonelli": "ANT",
@@ -66,13 +64,12 @@ driver_map = {
 }
 driver_names = list(driver_map.keys())
 
-selected_d1_name = st.sidebar.selectbox("Driver 1", driver_names, index=0) # Defaults to George Russell
-selected_d2_name = st.sidebar.selectbox("Driver 2", options=driver_names, index=1) # Fixed syntax error here
+selected_d1_name = st.sidebar.selectbox("Driver 1", driver_names, index=0)
+selected_d2_name = st.sidebar.selectbox("Driver 2", options=driver_names, index=1)
 
 driver3_options = ["None"] + driver_names
 selected_d3_name = st.sidebar.selectbox("Driver 3 (Optional)", driver3_options, index=0)
 
-# Extract technical codes to feed into the backend pipeline
 driver1 = driver_map[selected_d1_name]
 driver2 = driver_map[selected_d2_name]
 driver3 = "None" if selected_d3_name == "None" else driver_map[selected_d3_name]
@@ -188,15 +185,21 @@ if st.sidebar.button("Analyze Performance"):
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # 6. Metric Explanations for Users
+                # 6. Simplified Metric Explanations for Users
                 st.markdown("---")
                 tab1, tab2 = st.tabs(["💡 Live Telemetry Metric Guide", "📊 Why Spatial Distance Alignment Matters"])
                 with tab1:
-                    st.subheader("How to Analyze Driver Profiles")
+                    st.subheader("How to Read These Charts Instantly")
                     st.markdown("""
-                    * **Velocity Valleys (Speed Chart):** Look at the deep dips in the lines. These represent braking points and corners. Whichever driver's line stays highest at the absolute lowest point carried the best **minimum corner speed** at the apex.
-                    * **Braking Points:** Where a line suddenly drops vertically reveals exactly where a driver smashed the brakes. You can spot who braved a later braking point.
-                    * **Throttle Application (Throttle Chart):** Look at the slopes where the line climbs back from 0% to 100%. A steeper, faster climb means that driver achieved **exit traction** and pinned the gas pedal earlier, maximizing their top speed down the next straightway.
+                    Think of these charts as a side-by-side comparison of how drivers attack a corner:
+                    
+                    * **The 'V' Valleys (Speed Chart):** Every dip represents a corner. 
+                        * **Braking:** Look at where a line drops off a cliff. The driver whose line drops later braved a later braking point.
+                        * **Cornering Momentum:** Look at the absolute lowest tip of the 'V'. Whichever driver's line stays higher at the lowest point carried more **minimum corner speed** through the apex.
+                    
+                    * **The Traction Hills (Throttle Chart):** Look at the lines climbing back up to 100% as they leave a corner.
+                        * **Good Traction:** A straight, steep climb up means the car was stable and the driver pinned the gas immediately, maximizing straight-line speed.
+                        * **Instability/Wheelspin:** If a line stutters, flatlines, or climbs slowly like a staircase, the driver had to lift off the throttle because the car was sliding or losing grip.
                     """)
                 with tab2:
                     st.subheader("Data Analyst Design Insight")
