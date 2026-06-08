@@ -1,6 +1,6 @@
 streamlit
 fastf1
-matplotlib
+plotly
 pandas
 numpy
-plotly
+matplotlib
