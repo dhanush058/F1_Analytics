@@ -114,8 +114,7 @@ if analyze_btn:
         color = team_colors[driver]
         tel = telemetry_data[driver]
         
-        # 💡 TEAMMATE VISUAL PROTECTION LAYER: 
-        # If comparing teammates, use a solid line for the first driver and a dashed line for subsequent ones!
+        # TEAMMATE VISUAL PROTECTION LAYER: 
         if i > 0 and team_colors[driver] == team_colors[valid_drivers[0]]:
             line_style = '--'   # Dashed line for teammate
             display_label = f"{driver} (Teammate Track)"
@@ -129,16 +128,15 @@ if analyze_btn:
         # 2. Throttle Application Panel
         ax[2].plot(tel['Distance'], tel['Throttle'], color=color, linestyle=line_style, linewidth=1.2, alpha=0.7)
         
-        # 3. Time Delta Vector Panel (Relative to baseline)
+        # 3. Time Delta Vector Panel
         if driver != baseline_driver:
             try:
                 delta_time, ref_tel, _ = fastf1.utils.delta_time(fastest_laps[baseline_driver], fastest_laps[driver])
-                # 💡 UX FIX: Explicitly name the comparison in the legend
                 ax[0].plot(ref_tel['Distance'], delta_time, label=f"{driver} (Gap to {baseline_driver})", color=color, linestyle=line_style, linewidth=1.5)
             except Exception:
                 pass
 
-    # 💡 UX FIX: Label the gray flat line so users know it represents the faster reference driver
+    # Label the gray flat reference line
     ax[0].axhline(0, color='gray', linestyle='--', alpha=0.7, label=f"{baseline_driver} Baseline (Faster Lap)")
     ax[0].set_ylabel('Delta Time (Seconds)\n[ Climbing = Losing Time ]')
     ax[0].legend(loc='upper left')
@@ -154,6 +152,38 @@ if analyze_btn:
 
     plt.tight_layout()
     st.pyplot(fig)
+    
+    # ==============================================================================
+    # 💡 USER EXPERIENCE (UX) TELEMETRY GUIDE TABS
+    # ==============================================================================
+    st.markdown("---")
+    st.markdown("### 🛠️ Telemetry Reading Guide")
+    
+    tab1, tab2, tab3 = st.tabs(["⏱️ Time Delta Graph", "🏎️ Velocity Graph", "🎛️ Throttle Graph"])
+    
+    with tab1:
+        st.markdown(f"""
+        **How to read the Time Delta panel:**
+        * **The Flat Gray Line (0.0):** Represents **{baseline_driver}**, who set the faster lap. 
+        * **The Colored Lines:** Trace the real-time gap of the other drivers.
+        * **Climbing vs. Dropping:** When a line **climbs upward**, that driver is losing time to {baseline_driver}. When the line **drops downward**, they are gaining time back.
+        """)
+        
+    with tab2:
+        st.markdown("""
+        **How to read the Velocity (Speed) panel:**
+        * **The Hills (Peaks):** Highest straightaway top speeds. Higher peaks indicate lower aerodynamic drag or stronger engine output.
+        * **The Valleys (V-Shapes):** Hard braking zones for corners. 
+        * **The Apex (Bottom of the V):** The lowest point of the V is the slowest speed inside the corner. A higher line here means a driver maintained better minimum cornering speed.
+        """)
+        
+    with tab3:
+        st.markdown("""
+        **How to read the Throttle panel:**
+        * **Top Plateaus (100%):** The driver is flat out with the gas pedal pinned completely to the floor along straightaways.
+        * **Bottom Floor (0%):** The driver has lifted off the gas pedal completely to slam on the brakes for an upcoming turn.
+        * **The Ramps (0% to 100%):** Shows corner exit acceleration. A smooth, uninterrupted ramp means clean traction. A wobble or sudden dip means the car slid, forcing the driver to lift off slightly to avoid spinning.
+        """)
     
 else:
     st.info("👈 Set your race inputs in the sidebar. Click 'Run Multi-Analysis' to compile telemetry charts dynamically.")
