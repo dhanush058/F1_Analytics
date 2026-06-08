@@ -1,189 +1,121 @@
-import os
 import streamlit as st
-import matplotlib.pyplot as plt
-import pandas as pd
 import fastf1
-import fastf1.plotting
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import os
 
-# ==============================================================================
-# 🛠️ GLOBAL ENVIRONMENT & STREAMLIT SETUP
-# ==============================================================================
-st.set_page_config(
-    page_title="Dynamic F1 Telemetry Analyzer", 
-    page_icon="🏎️", 
-    layout="wide"
-)
+# Set page config for a professional dark look
+st.set_page_config(page_title="F1 Telemetry Analyzer", layout="wide")
+st.title("🏎️ Formula 1 Spatial Telemetry Analyzer")
 
-# Apply FastF1's official color mapping styles for Matplotlib
-fastf1.plotting.setup_mpl(misc_mpl_mods=False)
+# 1. Setup Robust Caching Layer
+CACHE_DIR = "f1_cache"
+if not os.path.exists(CACHE_DIR):
+    os.makedirs(CACHE_DIR)
+fastf1.Cache.enable_cache(CACHE_DIR)
 
-# Force system to read the repository cache folder first
-cache_dir = 'f1_cache'
-if not os.path.exists(cache_dir):
-    os.makedirs(cache_dir)
-fastf1.Cache.enable_cache(cache_dir)
+# 2. Sidebar Controls (User Input)
+st.sidebar.header("Match Setup")
+year = st.sidebar.selectbox("Year", [2024, 2023, 2022], index=0)
+circuit = st.sidebar.text_input("Circuit Name (e.g., Monza, Silverstone)", "Monza")
+session_type = st.sidebar.selectbox("Session", ["Q", "R"], index=0) # Q = Quali, R = Race
 
-# ==============================================================================
-# 🎨 SIDEBAR INTERFACE CONTROL PANEL
-# ==============================================================================
-st.sidebar.header("🏁 Race Settings")
+driver1 = st.sidebar.text_input("Driver 1 Code (e.g., VER)", "VER").upper()
+driver2 = st.sidebar.text_input("Driver 2 Code (e.g., HAM)", "HAM").upper()
 
-year = st.sidebar.number_input("📅 Season Year", min_value=2018, max_value=2026, value=2026, step=1)
-gp_name = st.sidebar.text_input("📍 Grand Prix Location", value="Monaco")
-session_type = st.sidebar.selectbox("⏱️ Session Type", options=["Q", "R", "FP1", "FP2", "FP3"], index=0)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("🏎️ Driver Comparison Group")
-
-driver_list = []
-with st.sidebar.spinner("⏳ Syncing entry list from cache/API..."):
+# 3. Data Core Fetching Function (Cached by Streamlit)
+@st.cache_data(show_spinner="Fetching massive telemetry streams...")
+def get_telemetry_data(year, circuit, session_type, d1, d2):
     try:
-        # Load lightweight metadata to populate the dropdown menu dynamically
-        meta_session = fastf1.get_session(year, gp_name, session_type)
-        meta_session.load(laps=True, telemetry=False, weather=False)
-        clean_laps = meta_session.laps.dropna(subset=['Driver'])
-        available_drivers = sorted(list(clean_laps['Driver'].unique()))
+        session = fastf1.get_session(year, circuit, session_type)
+        session.load(laps=True, telemetry=True, weather=False)
         
-        driver_list = st.sidebar.multiselect(
-            "Select Drivers to Compare", 
-            options=available_drivers, 
-            default=available_drivers[:2] if len(available_drivers) >= 2 else None
+        # Get fastest laps
+        lap1 = session.laps.pick_driver(d1).pick_fastest()
+        lap2 = session.laps.pick_driver(d2).pick_fastest()
+        
+        # Extract telemetry
+        tel1 = lap1.get_telemetry().add_distance()
+        tel2 = lap2.get_telemetry().add_distance()
+        
+        # Check if they are teammates to trigger visual UX rules
+        is_teammate = session.results.loc[session.results['Abbreviation'] == d1, 'TeamName'].values[0] == \
+                      session.results.loc[session.results['Abbreviation'] == d2, 'TeamName'].values[0]
+        
+        return tel1, tel2, is_teammate
+    except Exception as e:
+        return None, None, False
+
+# Execute Data Pipeline
+if st.sidebar.button("Analyze Performance"):
+    tel1, tel2, is_teammate = get_telemetry_data(year, circuit, session_type, driver1, driver2)
+    
+    if tel1 is not None and tel2 is not None:
+        st.success(f"Successfully synchronized data for {driver1} vs {driver2}!")
+        
+        # Determine visual dash rules for teammates
+        d2_line_style = "dash" if is_teammate else "solid"
+        
+        # 4. Build Interactive Multi-Panel Plotly Charts
+        # Generates a 2-row layout: Row 1 = Velocity, Row 2 = Throttle
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
+                            vertical_spacing=0.1,
+                            subplot_titles=("Velocity Comparison (Minimum Corner Speed)", "Throttle Application (Exit Traction)"))
+        
+        # --- ROW 1: VELOCITY ---
+        fig.add_trace(
+            go.Scatter(x=tel1['Distance'], y=tel1['Speed'], mode='lines', name=driver1,
+                       line=dict(color='#1E90FF', width=2),
+                       hovertemplate="Distance: %{x:.0f}m<br>Speed: %{y:.1f} km/h<extra></extra>"),
+            row=1, col=1
         )
-    except Exception:
-        st.sidebar.caption("⚠️ Live lookup offline. Enter driver codes manually:")
-        drivers_input = st.sidebar.text_input("Enter Driver Codes (Comma Separated)", value="VER, HAM")
-        driver_list = [d.strip().upper() for d in drivers_input.split(",") if d.strip()]
-
-analyze_btn = st.sidebar.button("⚡ Run Multi-Analysis", use_container_width=True)
-
-# ==============================================================================
-# 📊 MAIN CONTENT DATA VISUALIZATION ENGINE
-# ==============================================================================
-st.title("🏎️ Formula 1 Multi-Driver Performance Dashboard")
-st.markdown("Analyze telemetry logs synchronized meter-by-meter along the physical circuit perimeter.")
-
-if analyze_btn:
-    if not driver_list or len(driver_list) < 2:
-        st.error("❌ Please select or input at least two driver codes to generate a comparative analysis.")
-        st.stop()
-
-    fastest_laps = {}
-    telemetry_data = {}
-    team_colors = {}
-
-    with st.spinner("📥 Extracting telemetry matrices from data stream..."):
-        try:
-            session = fastf1.get_session(year, gp_name, session_type)
-            session.load()
+        fig.add_trace(
+            go.Scatter(x=tel2['Distance'], y=tel2['Speed'], mode='lines', name=driver2,
+                       line=dict(color='#FF4500', width=2, dash=d2_line_style),
+                       hovertemplate="Distance: %{x:.0f}m<br>Speed: %{y:.1f} km/h<extra></extra>"),
+            row=1, col=1
+        )
+        
+        # --- ROW 2: THROTTLE ---
+        fig.add_trace(
+            go.Scatter(x=tel1['Distance'], y=tel1['Throttle'], mode='lines', name=driver1,
+                       line=dict(color='#1E90FF', width=2), showlegend=False,
+                       hovertemplate="Distance: %{x:.0f}m<br>Throttle: %{y:.1f}%<extra></extra>"),
+            row=2, col=1
+        )
+        fig.add_trace(
+            go.Scatter(x=tel2['Distance'], y=tel2['Throttle'], mode='lines', name=driver2,
+                       line=dict(color='#FF4500', width=2, dash=d2_line_style), showlegend=False,
+                       hovertemplate="Distance: %{x:.0f}m<br>Throttle: %{y:.1f}%<extra></extra>"),
+            row=2, col=1
+        )
+        
+        # 5. Global Layout Styling (Optimized for Mobile/Desktop Tap & Hover)
+        fig.update_layout(
+            height=600,
+            template="plotly_dark",
+            hovermode="x unified",  # Aligns data lines perfectly when user taps a specific meter point
+            margin=dict(l=50, r=20, t=60, b=50),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        
+        fig.update_xaxes(title_text="Distance along track (meters)", row=2, col=1)
+        fig.update_yaxes(title_text="Speed (km/h)", row=1, col=1)
+        fig.update_yaxes(title_text="Throttle %", row=2, col=1)
+        
+        # Render Chart to Streamlit
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 6. Embedded Product UX: Contextual Guides for Non-Technical Users
+        st.markdown("---")
+        tab1, tab2 = st.tabs(["💡 How to read these graphs", "📊 Real-World Engineering Value"])
+        with tab1:
+            st.write("**Velocity Valleys:** Look closely at the lowest points of the curves inside corners. Whichever driver's line stays higher carried more 'minimum speed' through that corner apex.")
+            st.write("**Throttle Ramps:** Look at how quickly a driver transitions from 0% back to 100%. A steeper vertical climb means the driver got back on the gas pedal much earlier, gaining time on the straights.")
+        with tab2:
+            st.write("In professional Formula 1 debriefs, teams use this exact spatial metric tracking format to align physical sensor positions. This eliminates timing inaccuracies caused by completely different racing lines.")
             
-            for driver in driver_list:
-                try:
-                    lap = session.laps.pick_driver(driver).pick_fastest()
-                    if lap is not None and pd.notna(lap['LapTime']):
-                        fastest_laps[driver] = lap
-                        telemetry_data[driver] = lap.get_car_data().add_distance()
-                        team_colors[driver] = fastf1.plotting.get_driver_color(driver, session=session)
-                except Exception:
-                    st.warning(f"⚠️ Telemetry log missing for driver: {driver}. Skipping.")
-            
-            valid_drivers = list(fastest_laps.keys())
-            if len(valid_drivers) < 2:
-                raise ValueError("Incomplete data profiles generated.")
-                
-            baseline_driver = min(valid_drivers, key=lambda d: fastest_laps[d]['LapTime'])
-
-        except Exception as e:
-            st.error("❌ Core Data Extraction Failure. The live connection is blocked by the API firewall.")
-            st.info("💡 TO FIX THIS: Run this race configuration once on your local computer via VS Code, then push the generated files to GitHub to cache them permanently!")
-            st.stop()
-
-    # SECTION 1: Performance Summary Metric Cards
-    st.markdown(f"### ⏱️ Lap Leaderboard (Baseline Tracking Target: **{baseline_driver}**)")
-    cols = st.columns(len(valid_drivers))
-    for i, driver in enumerate(sorted(valid_drivers, key=lambda d: fastest_laps[d]['LapTime'])):
-        with cols[i]:
-            is_baseline = "⭐ " if driver == baseline_driver else ""
-            st.metric(label=f"{is_baseline}{driver}", value=str(fastest_laps[driver]['LapTime'])[:-3])
-
-    # SECTION 2: Matplotlib Overlaid Graphs
-    st.markdown("### 📊 Synchronized Telemetry Traces")
-    fig, ax = plt.subplots(3, 1, figsize=(14, 11), sharex=True, gridspec_kw={'height_ratios': [1.5, 2, 1]})
-
-    # Dynamic trace building loop with teammate styling protection
-    for i, driver in enumerate(valid_drivers):
-        color = team_colors[driver]
-        tel = telemetry_data[driver]
-        
-        # TEAMMATE VISUAL PROTECTION LAYER: 
-        if i > 0 and team_colors[driver] == team_colors[valid_drivers[0]]:
-            line_style = '--'   # Dashed line for teammate
-            display_label = f"{driver} (Teammate Track)"
-        else:
-            line_style = '-'    # Solid line for primary driver
-            display_label = driver
-
-        # 1. Speed Profile Panel
-        ax[1].plot(tel['Distance'], tel['Speed'], label=display_label, color=color, linestyle=line_style, linewidth=1.8, alpha=0.9)
-        
-        # 2. Throttle Application Panel
-        ax[2].plot(tel['Distance'], tel['Throttle'], color=color, linestyle=line_style, linewidth=1.2, alpha=0.7)
-        
-        # 3. Time Delta Vector Panel
-        if driver != baseline_driver:
-            try:
-                delta_time, ref_tel, _ = fastf1.utils.delta_time(fastest_laps[baseline_driver], fastest_laps[driver])
-                ax[0].plot(ref_tel['Distance'], delta_time, label=f"{driver} (Gap to {baseline_driver})", color=color, linestyle=line_style, linewidth=1.5)
-            except Exception:
-                pass
-
-    # Label the gray flat reference line
-    ax[0].axhline(0, color='gray', linestyle='--', alpha=0.7, label=f"{baseline_driver} Baseline (Faster Lap)")
-    ax[0].set_ylabel('Delta Time (Seconds)\n[ Climbing = Losing Time ]')
-    ax[0].legend(loc='upper left')
-    ax[0].set_title(f"{session.event['EventName']} ({year}) - {session.name} Session Overlays", fontsize=12)
-
-    ax[1].set_ylabel('Velocity (km/h)')
-    ax[1].legend(loc='lower left')
-    ax[1].grid(True, linestyle=':', alpha=0.3)
-
-    ax[2].set_ylabel('Throttle %')
-    ax[2].set_xlabel('Physical Distance Along Track (Meters)')
-    ax[2].grid(True, linestyle=':', alpha=0.3)
-
-    plt.tight_layout()
-    st.pyplot(fig)
-    
-    # ==============================================================================
-    # 💡 USER EXPERIENCE (UX) TELEMETRY GUIDE TABS
-    # ==============================================================================
-    st.markdown("---")
-    st.markdown("### 🛠️ Telemetry Reading Guide")
-    
-    tab1, tab2, tab3 = st.tabs(["⏱️ Time Delta Graph", "🏎️ Velocity Graph", "🎛️ Throttle Graph"])
-    
-    with tab1:
-        st.markdown(f"""
-        **How to read the Time Delta panel:**
-        * **The Flat Gray Line (0.0):** Represents **{baseline_driver}**, who set the faster lap. 
-        * **The Colored Lines:** Trace the real-time gap of the other drivers.
-        * **Climbing vs. Dropping:** When a line **climbs upward**, that driver is losing time to {baseline_driver}. When the line **drops downward**, they are gaining time back.
-        """)
-        
-    with tab2:
-        st.markdown("""
-        **How to read the Velocity (Speed) panel:**
-        * **The Hills (Peaks):** Highest straightaway top speeds. Higher peaks indicate lower aerodynamic drag or stronger engine output.
-        * **The Valleys (V-Shapes):** Hard braking zones for corners. 
-        * **The Apex (Bottom of the V):** The lowest point of the V is the slowest speed inside the corner. A higher line here means a driver maintained better minimum cornering speed.
-        """)
-        
-    with tab3:
-        st.markdown("""
-        **How to read the Throttle panel:**
-        * **Top Plateaus (100%):** The driver is flat out with the gas pedal pinned completely to the floor along straightaways.
-        * **Bottom Floor (0%):** The driver has lifted off the gas pedal completely to slam on the brakes for an upcoming turn.
-        * **The Ramps (0% to 100%):** Shows corner exit acceleration. A smooth, uninterrupted ramp means clean traction. A wobble or sudden dip means the car slid, forcing the driver to lift off slightly to avoid spinning.
-        """)
-    
+    else:
+        st.error("Could not fetch data. Please verify the Driver codes and Circuit name are valid.")
 else:
-    st.info("👈 Set your race inputs in the sidebar. Click 'Run Multi-Analysis' to compile telemetry charts dynamically.")
+    st.info("Adjust settings in the sidebar and click 'Analyze Performance' to synchronize live data profiles.")
