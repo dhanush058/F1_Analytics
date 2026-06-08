@@ -31,7 +31,8 @@ def get_season_events(selected_year):
         gp_events = schedule[schedule['EventFormat'] != 'testing']
         return list(zip(gp_events['EventName'].tolist(), gp_events['RoundNumber'].tolist()))
     except Exception:
-        return [("Australian Grand Prix", 1), ("Monaco Grand Prix", 6), ("Italian Grand Prix", 13)]
+        # Historically accurate calendar map positions across active eras
+        return [("Australian Grand Prix", 1), ("Japanese Grand Prix", 4), ("Monaco Grand Prix", 8), ("Italian Grand Prix", 16)]
 
 # 2. Sidebar Controls - Part 1 (Race Setup)
 st.sidebar.header("Race Setup")
@@ -61,7 +62,6 @@ YEARLY_DRIVERS_MAP = {
         "Fernando Alonso": "ALO",
         "Lance Stroll": "STR",
         "Nico Hulkenberg": "HUL",
-        "Yuki Tsunoda": "TSU",
         "Alexander Albon": "ALB",
         "Esteban Ocon": "OCO",
         "Pierre Gasly": "GAS",
@@ -247,18 +247,18 @@ if st.sidebar.button("Analyze Performance"):
             st.session_state.processed_data = None
             st.session_state.active_view_key = ""
         else:
-            # Lock calculations and view tracking keys securely into memory state
             st.session_state.processed_data = payload["data"]
             st.session_state.active_view_key = target_view_key
+            st.rerun()
 
-# --- RENDERING ENGINE (Runs safely and dynamically on every state execution loop) ---
+# --- RENDERING ENGINE (Runs safely outside the button block) ---
 if st.session_state.processed_data and st.session_state.active_view_key == target_view_key:
     telemetry_data = st.session_state.processed_data
     successful_codes = list(telemetry_data.keys())
     
     if len(successful_codes) < 2:
         st.warning("⚠️ Telemetry Stream Processing Alert")
-        st.error(f"FastF1 could not find complete telemetry streams for this pairing. Try selecting an alternate session (e.g., switching from Qualifying to Race) or check 'Force Refresh Live Data'.")
+        st.error(f"FastF1 could not find complete telemetry streams for this pairing. Try selecting an alternate session or check 'Force Refresh Live Data'.")
     else:
         successful_names = [CODE_TO_NAME.get(code, code) for code in successful_codes]
         st.success(f"Successfully mapped spatial coordinates for: {', '.join(successful_names)}!")
