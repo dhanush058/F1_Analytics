@@ -133,11 +133,13 @@ if analyze_btn:
         if driver != baseline_driver:
             try:
                 delta_time, ref_tel, _ = fastf1.utils.delta_time(fastest_laps[baseline_driver], fastest_laps[driver])
-                ax[0].plot(ref_tel['Distance'], delta_time, label=f"{driver} vs {baseline_driver}", color=color, linestyle=line_style, linewidth=1.5)
+                # 💡 UX FIX: Explicitly name the comparison in the legend
+                ax[0].plot(ref_tel['Distance'], delta_time, label=f"{driver} (Gap to {baseline_driver})", color=color, linestyle=line_style, linewidth=1.5)
             except Exception:
                 pass
 
-    ax[0].axhline(0, color='gray', linestyle='--', alpha=0.5)
+    # 💡 UX FIX: Label the gray flat line so users know it represents the faster reference driver
+    ax[0].axhline(0, color='gray', linestyle='--', alpha=0.7, label=f"{baseline_driver} Baseline (Faster Lap)")
     ax[0].set_ylabel('Delta Time (Seconds)\n[ Climbing = Losing Time ]')
     ax[0].legend(loc='upper left')
     ax[0].set_title(f"{session.event['EventName']} ({year}) - {session.name} Session Overlays", fontsize=12)
