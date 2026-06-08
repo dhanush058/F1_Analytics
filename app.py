@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
 import shutil
+import time
 
 # Set page config for a professional dark look
 st.set_page_config(page_title="F1 Telemetry Analyzer", layout="wide")
@@ -23,9 +24,9 @@ def get_season_events(selected_year):
         gp_events = schedule[schedule['EventFormat'] != 'testing']
         return list(zip(gp_events['EventName'].tolist(), gp_events['RoundNumber'].tolist()))
     except Exception:
-        return [("Australian Grand Prix", 1), ("Monaco Grand Prix", 6), ("Italian Grand Prix", 15)]
+        return [("Australian Grand Prix", 1), ("Monaco Grand Prix", 6), ("Italian Grand Prix", 13)]
 
-# 2. Sidebar Controls (Race Setup)
+# 2. Sidebar Controls - Part 1 (Race Setup)
 st.sidebar.header("Race Setup")
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024], index=0)
 
@@ -39,48 +40,42 @@ session_map = {"Qualifying": "Q", "Race": "R"}
 selected_session_label = st.sidebar.selectbox("Session", list(session_map.keys()), index=0)
 session_type = session_map[selected_session_label]
 
-driver_map = {
-    "George Russell": "RUS",
-    "Kimi Antonelli": "ANT",
-    "Max Verstappen": "VER",
-    "Lewis Hamilton": "HAM",
-    "Charles Leclerc": "LEC",
-    "Lando Norris": "NOR",
-    "Oscar Piastri": "PIA",
-    "Isack Hadjar": "HAD",
-    "Liam Lawson": "LAW",
-    "Pierre Gasly": "GAS",
-    "Oliver Bearman": "BEA",
-    "Franco Colapinto": "COL",
-    "Arvid Lindblad": "LIN",
-    "Carlos Sainz": "SAI",
-    "Alexander Albon": "ALB",
-    "Esteban Ocon": "OCO",
-    "Gabriel Bortoleto": "BOR",
-    "Fernando Alonso": "ALO",
-    "Nico Hulkenberg": "HUL",
-    "Valtteri Bottas": "BOT",
-    "Sergio Perez": "PER",
-    "Lance Stroll": "STR"
-}
-driver_names = list(driver_map.keys())
+# 3. Dynamic Driver Extractor Function (Prevents Cross-Year Crashes)
+@st.cache_data(show_spinner=False)
+def get_active_session_drivers(year, round_num, session_type):
+    try:
+        session = fastf1.get_session(year, round_num, session_type)
+        session.load(laps=True, telemetry=False, weather=False)
+        drivers = session.laps['Driver'].unique().tolist()
+        if not drivers:
+            raise ValueError()
+        return sorted(drivers)
+    except Exception:
+        # Emergency fallbacks if live data streams are temporarily lagging
+        return ["VER", "NOR", "HAM", "RUS", "LEC", "SAI", "PIA", "GAS", "ALO", "PER"]
 
-selected_d1_name = st.sidebar.selectbox("Driver 1", driver_names, index=0)
-selected_d2_name = st.sidebar.selectbox("Driver 2", options=driver_names, index=1)
+# Fetch driver listings dynamically based on user selections above
+available_drivers = get_active_session_drivers(year, selected_round, session_type)
 
-driver3_options = ["None"] + driver_names
-selected_d3_name = st.sidebar.selectbox("Driver 3 (Optional)", driver3_options, index=0)
+st.sidebar.markdown("---")
+st.sidebar.header("Driver Selection")
 
-driver1 = driver_map[selected_d1_name]
-driver2 = driver_map[selected_d2_name]
-driver3 = "None" if selected_d3_name == "None" else driver_map[selected_d3_name]
+# Establish safe indexes based on what drivers exist in the fetched year/session data
+d1_idx = 0
+d2_idx = min(1, len(available_drivers) - 1)
+
+driver1 = st.sidebar.selectbox("Driver 1", available_drivers, index=d1_idx)
+driver2 = st.sidebar.selectbox("Driver 2", available_drivers, index=d2_idx)
+
+driver3_options = ["None"] + available_drivers
+driver3 = st.sidebar.selectbox("Driver 3 (Optional)", driver3_options, index=0)
 
 # Clear Cache Option to fix corrupted file downloads instantly
 st.sidebar.markdown("---")
 st.sidebar.subheader("Data Maintenance")
 force_refresh = st.sidebar.checkbox("Force Refresh Live Data", value=False)
 
-# 3. Defensive Data Fetching Function
+# 4. Defensive Data Fetching Function
 def get_single_driver_telemetry(session, driver_code):
     try:
         driver_laps = session.laps.pick_driver(driver_code)
@@ -100,11 +95,18 @@ def get_single_driver_telemetry(session, driver_code):
         return None
 
 def process_race_session(year, round_num, session_type, d1, d2, d3):
-    try:
-        session = fastf1.get_session(year, round_num, session_type)
-        session.load(laps=True, telemetry=True, weather=False)
-    except Exception as e:
-        return {"error": f"The API session info is not available yet for this event: {str(e)}", "data": {}}
+    session = fastf1.get_session(year, round_num, session_type)
+    
+    # Robust Retry Loop to handle heavy server loading seamlessly
+    for attempt in range(2):
+        try:
+            session.load(laps=True, telemetry=True, weather=False)
+            break
+        except Exception as e:
+            if attempt == 0:
+                time.sleep(2)
+                continue
+            return {"error": f"The F1 live timing network timed out. Hit 'Analyze Performance' again to retry. Details: {str(e)}", "data": {}}
 
     results = {}
     
@@ -133,7 +135,7 @@ if st.sidebar.button("Analyze Performance"):
                 shutil.rmtree(CACHE_DIR)
             os.makedirs(CACHE_DIR)
             fastf1.Cache.enable_cache(CACHE_DIR)
-            st.info("Cache successfully cleared. Downloading pristine telemetry packets...")
+            st.info("Cache successfully wiped. Requesting clean tracking packages from servers...")
 
         with st.spinner("Extracting and processing telemetry grids..."):
             payload = process_race_session(year, selected_round, session_type, driver1, driver2, driver3)
@@ -146,14 +148,11 @@ if st.sidebar.button("Analyze Performance"):
             
             if len(successful_codes) < 2:
                 st.warning("⚠️ Telemetry Stream Processing Alert")
-                st.error("FastF1 did not return complete telemetry logs for this combination. If this worked before, check 'Force Refresh Live Data' in the sidebar and click Analyze again.")
+                st.error(f"Incomplete dataset returned for this pairing. Turn on 'Force Refresh Live Data' in the sidebar and rerun to re-download pristine tracking files.")
             else:
-                code_to_name = {v: k for k, v in driver_map.items()}
-                successful_names = [code_to_name[code] for code in successful_codes]
+                st.success(f"Successfully mapped spatial coordinates for: {', '.join(successful_codes)}!")
                 
-                st.success(f"Successfully mapped spatial coordinates for: {', '.join(successful_names)}!")
-                
-                # 4. Build Plots safely using only validated data streams
+                # 5. Build Plots safely using only validated data streams
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                                     vertical_spacing=0.1,
                                     subplot_titles=("Velocity Comparison (Minimum Corner Speed)", "Throttle Application (Exit Traction)"))
@@ -163,11 +162,10 @@ if st.sidebar.button("Analyze Performance"):
                 for drv_code in successful_codes:
                     df = telemetry_data[drv_code]
                     drv_color = color_palette.get(drv_code, '#FFFFFF')
-                    full_display_name = code_to_name[drv_code]
                     
                     # --- ROW 1: VELOCITY ---
                     fig.add_trace(
-                        go.Scatter(x=df['Distance'], y=df['Speed'], mode='lines', name=full_display_name,
+                        go.Scatter(x=df['Distance'], y=df['Speed'], mode='lines', name=drv_code,
                                    line=dict(color=drv_color, width=2),
                                    hovertemplate="Distance: %{x:.0f}m<br>Speed: %{y:.1f} km/h<extra></extra>"),
                         row=1, col=1
@@ -175,13 +173,13 @@ if st.sidebar.button("Analyze Performance"):
                     
                     # --- ROW 2: THROTTLE ---
                     fig.add_trace(
-                        go.Scatter(x=df['Distance'], y=df['Throttle'], mode='lines', name=full_display_name,
+                        go.Scatter(x=df['Distance'], y=df['Throttle'], mode='lines', name=drv_code,
                                    line=dict(color=drv_color, width=2), showlegend=False,
                                    hovertemplate="Distance: %{x:.0f}m<br>Throttle: %{y:.1f}%<extra></extra>"),
                         row=2, col=1
                     )
                 
-                # 5. Global Layout Styling (FIXED GRID AND AXIS WARPING OVERLAP)
+                # 6. Global Layout Styling (FIXED GRID AND AXIS WARPING OVERLAP)
                 fig.update_layout(
                     height=650,
                     template="plotly_dark",
@@ -204,7 +202,7 @@ if st.sidebar.button("Analyze Performance"):
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # 6. Metric Explanations for Users
+                # 7. Metric Explanations for Users
                 st.markdown("---")
                 tab1, tab2 = st.tabs(["💡 Live Telemetry Metric Guide", "📊 Why Spatial Distance Alignment Matters"])
                 with tab1:
