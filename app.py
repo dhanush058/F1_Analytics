@@ -33,21 +33,53 @@ event_names = [e[0] for e in event_options]
 selected_event_name = st.sidebar.selectbox("Circuit", event_names, index=0)
 
 selected_round = event_options[event_names.index(selected_event_name)][1]
-session_type = st.sidebar.selectbox("Session", ["Q", "R"], index=0)
 
-# Full active grid abbreviations
-driver_options = ["RUS", "ANT", "VER", "HAM", "LEC", "NOR", "PIA", "HAD", "LAW", "GAS", "BEA", "COL", "LIN", "SAI", "ALB", "OCO", "BOR", "ALO", "HUL", "BOT", "PER", "STR"]
+# UI Session Map: Friendly labels map directly to FastF1 API codes
+session_map = {"Qualifying": "Q", "Race": "R"}
+selected_session_label = st.sidebar.selectbox("Session", list(session_map.keys()), index=0)
+session_type = session_map[selected_session_label]
 
-driver1 = st.sidebar.selectbox("Driver 1", driver_options, index=0) # Defaults to RUS
-driver2 = st.sidebar.selectbox("Driver 2", driver_options, index=1) # Defaults to ANT
+# UI Driver Map: Maps readable Full Names directly to official 3-letter codes
+driver_map = {
+    "George Russell": "RUS",
+    "Kimi Antonelli": "ANT",
+    "Max Verstappen": "VER",
+    "Lewis Hamilton": "HAM",
+    "Charles Leclerc": "LEC",
+    "Lando Norris": "NOR",
+    "Oscar Piastri": "PIA",
+    "Isack Hadjar": "HAD",
+    "Liam Lawson": "LAW",
+    "Pierre Gasly": "GAS",
+    "Oliver Bearman": "BEA",
+    "Franco Colapinto": "COL",
+    "Arvid Lindblad": "LIN",
+    "Carlos Sainz": "SAI",
+    "Alexander Albon": "ALB",
+    "Esteban Ocon": "OCO",
+    "Gabriel Bortoleto": "BOR",
+    "Fernando Alonso": "ALO",
+    "Nico Hulkenberg": "HUL",
+    "Valtteri Bottas": "BOT",
+    "Sergio Perez": "PER",
+    "Lance Stroll": "STR"
+}
+driver_names = list(driver_map.keys())
 
-driver3_options = ["None"] + driver_options
-driver3 = st.sidebar.selectbox("Driver 3 (Optional)", driver3_options, index=0)
+selected_d1_name = st.sidebar.selectbox("Driver 1", driver_names, index=0) # Defaults to George Russell
+selected_d2_name = st.sidebar.selectbox("Driver 2", driver_options=driver_names, index=1) # Defaults to Kimi Antonelli
 
-# 3. Defensive Data Fetching Function (Validates each driver safely)
+driver3_options = ["None"] + driver_names
+selected_d3_name = st.sidebar.selectbox("Driver 3 (Optional)", driver3_options, index=0)
+
+# Extract technical codes to feed into the backend pipeline
+driver1 = driver_map[selected_d1_name]
+driver2 = driver_map[selected_d2_name]
+driver3 = "None" if selected_d3_name == "None" else driver_map[selected_d3_name]
+
+# 3. Defensive Data Fetching Function
 def get_single_driver_telemetry(session, driver_code):
     try:
-        # Pick driver laps safely
         driver_laps = session.laps.pick_driver(driver_code)
         if driver_laps.empty:
             return None
@@ -56,7 +88,6 @@ def get_single_driver_telemetry(session, driver_code):
         if fastest_lap is None:
             return None
             
-        # Verify the telemetry method exists safely
         if not hasattr(fastest_lap, 'get_telemetry'):
             return None
             
@@ -78,21 +109,15 @@ def process_race_session(year, round_num, session_type, d1, d2, d3):
 
     results = {}
     
-    # Process Driver 1
     t1 = get_single_driver_telemetry(session, d1)
-    if t1 is not None: 
-        results[d1] = t1
+    if t1 is not None: results[d1] = t1
     
-    # Process Driver 2 (Fixed variable logic here)
     t2 = get_single_driver_telemetry(session, d2)
-    if t2 is not None: 
-        results[d2] = t2
+    if t2 is not None: results[d2] = t2
     
-    # Process Driver 3
     if d3 != "None":
         t3 = get_single_driver_telemetry(session, d3)
-        if t3 is not None: 
-            results[d3] = t3
+        if t3 is not None: results[d3] = t3
         
     return {"error": None, "data": results}
 
@@ -109,30 +134,34 @@ if st.sidebar.button("Analyze Performance"):
             st.error(payload["error"])
         else:
             telemetry_data = payload["data"]
-            successful_drivers = list(telemetry_data.keys())
+            successful_codes = list(telemetry_data.keys())
             
-            if len(successful_drivers) < 2:
+            if len(successful_codes) < 2:
                 st.warning("⚠️ Telemetry Stream Processing Alert")
-                st.info(f"Successfully loaded drivers: {successful_drivers if successful_drivers else 'None'}")
-                st.error("FastF1 has not fully populated telemetry logs for these specific driver laps yet. Try a different driver combination or check if the session data is completely finalized by the FIA.")
+                st.error("FastF1 has not fully populated telemetry logs for these specific driver laps yet. Try a different driver combination.")
             else:
-                st.success(f"Successfully mapped spatial coordinates for: {', '.join(successful_drivers)}!")
+                # Reverse lookup map to display full names in chart legends/success messages
+                code_to_name = {v: k for k, v in driver_map.items()}
+                successful_names = [code_to_name[code] for code in successful_codes]
+                
+                st.success(f"Successfully mapped spatial coordinates for: {', '.join(successful_names)}!")
                 
                 # 4. Build Plots safely using only validated data streams
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                                     vertical_spacing=0.1,
                                     subplot_titles=("Velocity Comparison (Minimum Corner Speed)", "Throttle Application (Exit Traction)"))
                 
-                # Color map assignments
+                # Color map assignments based on technical codes
                 color_palette = {driver1: '#00FF00', driver2: '#1E90FF', driver3: '#FF4500'}
                 
-                for drv in successful_drivers:
-                    df = telemetry_data[drv]
-                    drv_color = color_palette.get(drv, '#FFFFFF')
+                for drv_code in successful_codes:
+                    df = telemetry_data[drv_code]
+                    drv_color = color_palette.get(drv_code, '#FFFFFF')
+                    full_display_name = code_to_name[drv_code]
                     
                     # --- ROW 1: VELOCITY ---
                     fig.add_trace(
-                        go.Scatter(x=df['Distance'], y=df['Speed'], mode='lines', name=drv,
+                        go.Scatter(x=df['Distance'], y=df['Speed'], mode='lines', name=full_display_name,
                                    line=dict(color=drv_color, width=2),
                                    hovertemplate="Distance: %{x:.0f}m<br>Speed: %{y:.1f} km/h<extra></extra>"),
                         row=1, col=1
@@ -140,7 +169,7 @@ if st.sidebar.button("Analyze Performance"):
                     
                     # --- ROW 2: THROTTLE ---
                     fig.add_trace(
-                        go.Scatter(x=df['Distance'], y=df['Throttle'], mode='lines', name=drv,
+                        go.Scatter(x=df['Distance'], y=df['Throttle'], mode='lines', name=full_display_name,
                                    line=dict(color=drv_color, width=2), showlegend=False,
                                    hovertemplate="Distance: %{x:.0f}m<br>Throttle: %{y:.1f}%<extra></extra>"),
                         row=2, col=1
