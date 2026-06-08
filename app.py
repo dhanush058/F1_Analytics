@@ -14,43 +14,49 @@ if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
 fastf1.Cache.enable_cache(CACHE_DIR)
 
-# Helper function to dynamically fetch the full season calendar
+# Helper function to dynamically fetch the full season calendar reliably
 @st.cache_data
-def get_season_circuits(selected_year):
+def get_season_events(selected_year):
     try:
         schedule = fastf1.get_event_schedule(selected_year)
         # Filter out testing sessions, keep only official Grand Prix events
         gp_events = schedule[schedule['EventFormat'] != 'testing']
-        return gp_events['EventName'].tolist()
+        # Return a list of tuples (EventName, RoundNumber) to ensure strict API matching
+        return list(zip(gp_events['EventName'].tolist(), gp_events['RoundNumber'].tolist()))
     except Exception:
-        # Fallback list just in case the API schedule endpoint fails
-        return ["Monaco", "Monza", "Silverstone", "Spa", "Melbourne", "Suzuka"]
+        # Robust fallback pairs if API schedule endpoint times out
+        return [("Australian Grand Prix", 1), ("Monaco Grand Prix", 6), ("Italian Grand Prix", 15)]
 
-# 2. Sidebar Controls (Rebranded to Race Setup)
+# 2. Sidebar Controls (Race Setup)
 st.sidebar.header("Race Setup")
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024], index=0)
 
-# DYNAMIC CIRCUITS: Pulls every single race for the selected year instantly
-circuit_options = get_season_circuits(year)
-circuit = st.sidebar.selectbox("Circuit", circuit_options, index=0)
+# DYNAMIC CIRCUITS: Pulls precise calendar event pairs for the selected year
+event_options = get_season_events(year)
+event_names = [e[0] for e in event_options]
+selected_event_name = st.sidebar.selectbox("Circuit", event_names, index=0)
+
+# Map selected name back to its official round number to prevent calendar shift bugs
+selected_round = event_options[event_names.index(selected_event_name)][1]
 
 session_type = st.sidebar.selectbox("Session", ["Q", "R"], index=0)
 
 # Full 2024-2026 active grid abbreviations
 driver_options = ["ANT", "VER", "HAM", "LEC", "NOR", "RUS", "PIA", "HAD", "LAW", "GAS", "BEA", "COL", "LIN", "SAI", "ALB", "OCO", "BOR", "ALO", "HUL", "BOT", "PER", "STR"]
 
-driver1 = st.sidebar.selectbox("Driver 1", driver_options, index=0) # Defaults to ANT
-driver2 = st.sidebar.selectbox("Driver 2", driver_options, index=1) # Defaults to VER
+driver1 = st.sidebar.selectbox("Driver 1", driver_options, index=5) # Defaults to RUS
+driver2 = st.sidebar.selectbox("Driver 2", driver_options, index=0) # Defaults to ANT
 
 # Driver 3 includes an optional "None" track to allow 2-driver matchups
 driver3_options = ["None"] + driver_options
 driver3 = st.sidebar.selectbox("Driver 3 (Optional)", driver3_options, index=0) # Defaults to None
 
-# 3. Dynamic Data Fetching Function supporting 2 or 3 drivers
+# 3. Dynamic Data Fetching Function using strict identifier mapping
 @st.cache_data(show_spinner="Fetching massive telemetry streams...")
-def get_telemetry_data(year, circuit, session_type, d1, d2, d3):
+def get_telemetry_data(year, round_num, session_type, d1, d2, d3):
     try:
-        session = fastf1.get_session(year, circuit, session_type)
+        # Using year + round number is the absolute safest identifier across calendar changes
+        session = fastf1.get_session(year, round_num, session_type)
         session.load(laps=True, telemetry=True, weather=False)
         
         # Always fetch Driver 1 and Driver 2
@@ -78,11 +84,12 @@ if st.sidebar.button("Analyze Performance"):
     if has_duplicates:
         st.error("Please select unique drivers to compare.")
     else:
-        tel1, tel2, tel3 = get_telemetry_data(year, circuit, session_type, driver1, driver2, driver3)
+        # Pass the strict round integer mapping into the engine
+        tel1, tel2, tel3 = get_telemetry_data(year, selected_round, session_type, driver1, driver2, driver3)
         
         if tel1 is not None and tel2 is not None:
             comparison_text = f"{driver1} and {driver2}" if driver3 == "None" else f"{driver1}, {driver2}, and {driver3}"
-            st.success(f"Successfully synchronized data for {comparison_text}!")
+            st.success(f"Successfully synchronized data for {comparison_text} in the {selected_event_name}!")
             
             # 4. Build Interactive Multi-Panel Plotly Charts
             fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
