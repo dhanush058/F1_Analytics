@@ -118,7 +118,6 @@ YEARLY_DRIVERS_MAP = {
     }
 }
 
-# Select the explicit master map based strictly on the selected dropdown year
 CURRENT_YEAR_MAP = YEARLY_DRIVERS_MAP[year]
 CODE_TO_NAME = {v: k for k, v in CURRENT_YEAR_MAP.items()}
 
@@ -135,14 +134,11 @@ def get_active_session_drivers(year, round_num, session_type):
             if code in CODE_TO_NAME:
                 display_names.append(CODE_TO_NAME[code])
             else:
-                # Dynamic catch-all fallback if a wild-card reserve runs a session
                 display_names.append(code)
         return sorted(display_names)
     except Exception:
-        # Fall back directly to the filtered list for this explicit year layout
         return sorted(list(CURRENT_YEAR_MAP.keys()))
 
-# Fetch only the valid full names for this season/weekend configuration
 available_full_names = get_active_session_drivers(year, selected_round, session_type)
 
 st.sidebar.markdown("---")
@@ -154,28 +150,36 @@ d2_name = st.sidebar.selectbox("Driver 2", available_full_names, index=min(1, le
 driver3_options = ["None"] + available_full_names
 d3_name = st.sidebar.selectbox("Driver 3 (Optional)", driver3_options, index=0)
 
-# Extract raw engineering codes from the exact context map
 driver1 = CURRENT_YEAR_MAP.get(d1_name, d1_name)
 driver2 = CURRENT_YEAR_MAP.get(d2_name, d2_name)
 driver3 = "None" if d3_name == "None" else CURRENT_YEAR_MAP.get(d3_name, d3_name)
 
-# Clear Cache Option to fix corrupted file downloads instantly
 st.sidebar.markdown("---")
 st.sidebar.subheader("Data Maintenance")
 force_refresh = st.sidebar.checkbox("Force Refresh Live Data", value=False)
 
-# 4. Defensive Data Fetching Function
+# 4. Advanced Defensive Telemetry Extraction
 def get_single_driver_telemetry(session, driver_code):
     try:
         driver_laps = session.laps.pick_driver(driver_code)
         if driver_laps.empty:
             return None
         
-        fastest_lap = driver_laps.pick_fastest()
-        if fastest_lap is None or not hasattr(fastest_lap, 'get_telemetry'):
+        # Priority 1: Try to pull their absolute fastest lap recorded
+        target_lap = driver_laps.pick_fastest()
+        
+        # Priority 2 Fallback: If pick_fastest fails or is completely empty, pull their final completed session lap
+        if target_lap is None or pd.isna(target_lap['LapTime']) if 'pd' in globals() else False:
+            valid_timed_laps = driver_laps.dropna(subset=['LapTime'])
+            if not valid_timed_laps.empty:
+                target_lap = valid_timed_laps.iloc[-1]
+            else:
+                target_lap = driver_laps.iloc[-1] # Absolute baseline fallback
+                
+        if target_lap is None or not hasattr(target_lap, 'get_telemetry'):
             return None
             
-        telemetry = fastest_lap.get_telemetry().add_distance()
+        telemetry = target_lap.get_telemetry().add_distance()
         if telemetry.empty or 'Speed' not in telemetry.columns:
             return None
             
@@ -223,7 +227,8 @@ if st.sidebar.button("Analyze Performance"):
                 shutil.rmtree(CACHE_DIR)
             os.makedirs(CACHE_DIR)
             fastf1.Cache.enable_cache(CACHE_DIR)
-            st.info("Cache successfully wiped. Requesting clean tracking packages from servers...")
+            st.info("🔄 Global RAM and memory configurations purged! Reloading crisp server data channels...")
+            st.rerun()
 
         with st.spinner("Extracting and processing telemetry grids..."):
             payload = process_race_session(year, selected_round, session_type, driver1, driver2, driver3)
@@ -236,7 +241,7 @@ if st.sidebar.button("Analyze Performance"):
             
             if len(successful_codes) < 2:
                 st.warning("⚠️ Telemetry Stream Processing Alert")
-                st.error(f"Incomplete dataset returned for this pairing. Turn on 'Force Refresh Live Data' in the sidebar and rerun to re-download pristine tracking files.")
+                st.error(f"FastF1 could not find complete telemetry streams for this pairing. Try selecting an alternate session (e.g., switching from Qualifying to Race) or check 'Force Refresh Live Data'.")
             else:
                 successful_names = [CODE_TO_NAME.get(code, code) for code in successful_codes]
                 st.success(f"Successfully mapped spatial coordinates for: {', '.join(successful_names)}!")
