@@ -3,6 +3,7 @@ import fastf1
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
+import shutil
 
 # Set page config for a professional dark look
 st.set_page_config(page_title="F1 Telemetry Analyzer", layout="wide")
@@ -74,6 +75,11 @@ driver1 = driver_map[selected_d1_name]
 driver2 = driver_map[selected_d2_name]
 driver3 = "None" if selected_d3_name == "None" else driver_map[selected_d3_name]
 
+# Clear Cache Option to fix corrupted file downloads instantly
+st.sidebar.markdown("---")
+st.sidebar.subheader("Data Maintenance")
+force_refresh = st.sidebar.checkbox("Force Refresh Live Data", value=False, help="Clear local cache files and re-download fresh telemetry from the servers.")
+
 # 3. Defensive Data Fetching Function
 def get_single_driver_telemetry(session, driver_code):
     try:
@@ -96,7 +102,6 @@ def get_single_driver_telemetry(session, driver_code):
     except Exception:
         return None
 
-@st.cache_data(show_spinner="Extracting and processing telemetry grids...")
 def process_race_session(year, round_num, session_type, d1, d2, d3):
     try:
         session = fastf1.get_session(year, round_num, session_type)
@@ -125,7 +130,17 @@ if st.sidebar.button("Analyze Performance"):
     if has_duplicates:
         st.error("Please select unique drivers to compare.")
     else:
-        payload = process_race_session(year, selected_round, session_type, driver1, driver2, driver3)
+        # Handle manual cache wipe if checked
+        if force_refresh:
+            st.cache_data.clear()
+            if os.path.exists(CACHE_DIR):
+                shutil.rmtree(CACHE_DIR)
+            os.makedirs(CACHE_DIR)
+            fastf1.Cache.enable_cache(CACHE_DIR)
+            st.info("Cache successfully cleared. Downloading pristine telemetry packets...")
+
+        with st.spinner("Extracting and processing telemetry grids..."):
+            payload = process_race_session(year, selected_round, session_type, driver1, driver2, driver3)
         
         if payload["error"]:
             st.error(payload["error"])
@@ -135,7 +150,7 @@ if st.sidebar.button("Analyze Performance"):
             
             if len(successful_codes) < 2:
                 st.warning("⚠️ Telemetry Stream Processing Alert")
-                st.error("FastF1 has not fully populated telemetry logs for these specific driver laps yet. Try a different driver combination.")
+                st.error("FastF1 did not return complete telemetry logs for this combination. If this worked before, check 'Force Refresh Live Data' in the sidebar and click Analyze again to clear any corrupted cache files.")
             else:
                 code_to_name = {v: k for k, v in driver_map.items()}
                 successful_names = [code_to_name[code] for code in successful_codes]
