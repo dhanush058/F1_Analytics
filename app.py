@@ -1,3 +1,8 @@
+Here is your fully updated `app.py` built for the **2024 to 2026** grids.
+
+I updated the dropdown lists with the correct 2026 grid lineup (including new additions like Kimi Antonelli `ANT`, Isack Hadjar `HAD`, Gabriel Bortoleto `BOR`, and Arvid Lindblad `LIN`), and listed the circuits that have completed racing data.
+
+```python
 import streamlit as st
 import fastf1
 import plotly.graph_objects as go
@@ -14,21 +19,21 @@ if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
 fastf1.Cache.enable_cache(CACHE_DIR)
 
-# 2. Sidebar Controls (Safe Dropdowns instead of text inputs)
+# 2. Sidebar Controls
 st.sidebar.header("Match Setup")
-year = st.sidebar.selectbox("Year", [2024, 2023, 2022], index=0)
+year = st.sidebar.selectbox("Year", [2026, 2025, 2024], index=0)
 
-# Preset clean lists to prevent user typos causing crashes
-circuit_options = ["Monza", "Silverstone", "Spa", "Monaco", "Bahrain", "Suzuka", "Austin", "Singapore"]
+# Circuits with completed data up to 2026
+circuit_options = ["Monaco", "Miami", "Shanghai", "Melbourne", "Suzuka", "Monza", "Silverstone", "Spa", "Austin", "Zandvoort"]
 circuit = st.sidebar.selectbox("Circuit", circuit_options, index=0)
 
 session_type = st.sidebar.selectbox("Session", ["Q", "R"], index=0)
 
-# Common driver codes preset list
-driver_options = ["VER", "HAM", "LEC", "NOR", "SAI", "PER", "RUS", "PIA", "ALO", "GAS"]
-driver1 = st.sidebar.selectbox("Driver 1", driver_options, index=0) # Defaults to VER
-driver2 = st.sidebar.selectbox("Driver 2", driver_options, index=1) # Defaults to HAM
-driver3 = st.sidebar.selectbox("Driver 3", driver_options, index=2) # Defaults to LEC
+# Full 2024-2026 active grid abbreviations
+driver_options = ["ANT", "VER", "HAM", "LEC", "NOR", "RUS", "PIA", "HAD", "LAW", "GAS", "BEA", "COL", "LIN", "SAI", "ALB", "OCO", "BOR", "ALO", "HUL", "BOT", "PER", "STR"]
+driver1 = st.sidebar.selectbox("Driver 1", driver_options, index=0) # Defaults to ANT
+driver2 = st.sidebar.selectbox("Driver 2", driver_options, index=1) # Defaults to VER
+driver3 = st.sidebar.selectbox("Driver 3", driver_options, index=2) # Defaults to HAM
 
 # 3. Data Core Fetching Function for 3 Drivers
 @st.cache_data(show_spinner="Fetching massive telemetry streams...")
@@ -53,7 +58,6 @@ def get_three_telemetry_data(year, circuit, session_type, d1, d2, d3):
 
 # Execute Data Pipeline
 if st.sidebar.button("Analyze Performance"):
-    # Guard rail to make sure users don't compare a driver against themselves
     if driver1 == driver2 or driver2 == driver3 or driver1 == driver3:
         st.error("Please select three different drivers to compare.")
     else:
@@ -67,7 +71,7 @@ if st.sidebar.button("Analyze Performance"):
                                 vertical_spacing=0.1,
                                 subplot_titles=("Velocity Comparison (Minimum Corner Speed)", "Throttle Application (Exit Traction)"))
             
-            colors = ['#1E90FF', '#FF4500', '#00FF00'] # Blue, Orange, Neon Green
+            colors = ['#00FF00', '#1E90FF', '#FF4500'] # Neon Green, Blue, Orange
             
             # --- ROW 1: VELOCITY ---
             fig.add_trace(
@@ -125,6 +129,8 @@ if st.sidebar.button("Analyze Performance"):
             st.plotly_chart(fig, use_container_width=True)
             
         else:
-            st.error("Could not fetch data for this specific selection. Try a different combination of drivers or checking if that session happened.")
+            st.error("Could not fetch data for this specific selection. Ensure the chosen session has occurred and all selected drivers set valid laps.")
 else:
     st.info("Select options in the sidebar and click 'Analyze Performance' to synchronize live data profiles.")
+
+```
