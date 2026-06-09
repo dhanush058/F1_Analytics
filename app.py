@@ -14,15 +14,13 @@ try:
 except Exception:
     pass
 
-# 2. Automated Season Calendar Fetcher (Guarantees every dropdown choice exists for that year)
+# 2. Automated Season Calendar Fetcher
 @st.cache_data(ttl=86400)
 def fetch_season_circuits(year):
     try:
         schedule = fastf1.get_event_schedule(year)
-        # Filter out pre-season testing sessions
         valid_events = schedule[schedule['EventFormat'] != 'testing']
         
-        # Guard against unplayed future 2026 weekends
         current_time = pd.Timestamp.now(tz='UTC')
         completed_events = valid_events[pd.to_datetime(valid_events['EventDate'], utc=True) < current_time]
         
@@ -31,7 +29,6 @@ def fetch_season_circuits(year):
             
         return completed_events['EventName'].tolist()
     except Exception:
-        # Emergency robust fallback strings if the database server has a connection issue
         return ["Belgian Grand Prix", "Italian Grand Prix", "British Grand Prix", "Monaco Grand Prix", "Austrian Grand Prix"]
 
 # 3. Sidebar Layout - Stage 1 Environment Dropdowns
@@ -39,7 +36,6 @@ with st.sidebar:
     st.header("Pipeline Configurations")
     selected_year = st.selectbox("Season Year", [2024, 2025, 2026], index=0)
     
-    # CIRCUIT IS NOW FULLY DYNAMIC: Populates only with real races from that specific year calendar
     track_options = fetch_season_circuits(selected_year)
     selected_track = st.selectbox("Grand Prix Location / Circuit", track_options, index=0)
     
@@ -49,11 +45,10 @@ with st.sidebar:
         index=0
     )
 
-# Translate reader-friendly session choices to official API database tokens
 session_map = {"Qualifying": "Q", "Race": "R", "Practice 1": "FP1", "Practice 2": "FP2", "Practice 3": "FP3"}
 api_session_token = session_map[selected_session]
 
-# 4. Dynamic Driver Roster Discovery Engine (Maps Full Names to Abbreviation Tokens)
+# 4. Dynamic Driver Roster Discovery Engine
 @st.cache_data(ttl=3600)
 def discover_session_roster(year, location, session_type):
     if location == "No Completed Races Available":
@@ -69,7 +64,6 @@ def discover_session_roster(year, location, session_type):
     except Exception:
         return {}
 
-# Generate active lookup dictionary based on track parameters
 driver_lookup_table = discover_session_roster(selected_year, selected_track, api_session_token)
 
 # 5. Sidebar Layout - Stage 2 Separate Driver Dropdowns
@@ -78,7 +72,6 @@ with st.sidebar:
     if driver_lookup_table:
         full_names_list = sorted(list(driver_lookup_table.keys()))
         
-        # Dedicated independent dropdown selectors using clear full names
         driver_name_1 = st.selectbox("Primary Driver (Driver 1)", full_names_list, index=0)
         
         default_2 = min(1, len(full_names_list) - 1)
@@ -86,7 +79,6 @@ with st.sidebar:
         
         driver_name_3 = st.selectbox("Optional Comparison (Driver 3)", ["None"] + full_names_list, index=0)
         
-        # Group selections and clean tokens
         active_names = [driver_name_1, driver_name_2]
         chosen_codes = [driver_lookup_table[driver_name_1], driver_lookup_table[driver_name_2]]
         
@@ -158,7 +150,6 @@ def load_multi_driver_telemetry(year, location, session_type, driver_codes):
             streams[code] = tel
             min_max_distance = min(min_max_distance, tel['Distance'].max())
             
-        # Resample data parameters onto a shared absolute 10-meter spatial distance tracking grid
         distance_grid = np.arange(0, min_max_distance, 10)
         grid_data = {'Distance': distance_grid}
         
@@ -169,7 +160,6 @@ def load_multi_driver_telemetry(year, location, session_type, driver_codes):
             
         df = pd.DataFrame(grid_data)
         
-        # Calculate Delta performance arrays relative to Driver 1 baseline
         base_code = driver_codes[0]
         for code in driver_codes[1:]:
             df[f'Delta_vs_{code}'] = df[f'Time_{base_code}'] - df[f'Time_{code}']
@@ -197,14 +187,15 @@ else:
             st.info(f"API Backend Trace: {df}")
             
     elif isinstance(df, pd.DataFrame):
-        # 9. Multi-Tier Subplot Construction (Velocity, Throttle, and Deltas)
+        # 9. Multi-Tier Subplot Construction (FIXED Spacing layout variables)
         fig = make_subplots(
             rows=2, cols=1, 
             shared_xaxes=True, 
-            vertical_spacing=0.06,
-            row_heights=[0.68, 0.32],
+            vertical_spacing=0.08,
+            row_heights=[0.65, 0.35],
             specs=[[{"secondary_y": True}], [{"secondary_y": False}]],
-            subplot_titles=("Velocity Profiles & Throttle Inputs Map", f"Time Delta Performance Gap Relative to {chosen_codes[0]} (Seconds)")
+            # Added line break padding to keep headers completely clear of the legend
+            subplot_titles=("<br>Velocity Profiles & Throttle Inputs Map", "<br>Time Delta Performance Gap Relative to Primary Driver (Seconds)")
         )
         
         color_palette = ['#00D2BE', '#FF8700', '#FF33FF']
@@ -213,32 +204,38 @@ else:
         for code in chosen_codes:
             full_name = active_names[chosen_codes.index(code)]
             
-            # Velocity Profiles (Primary Axis)
+            # Velocity Profiles
             fig.add_trace(go.Scatter(
                 x=df['Distance'], y=df[f'Speed_{code}'], name=f"{full_name} Speed",
                 line=dict(color=colors[code], width=2), hovertemplate="Distance: %{x}m<br>Speed: %{y} km/h"
             ), row=1, col=1, secondary_y=False)
             
-            # Throttle Inputs Profiles (Secondary Axis)
+            # Throttle Inputs Profiles
             fig.add_trace(go.Scatter(
                 x=df['Distance'], y=df[f'Throttle_{code}'], name=f"{code} Throttle",
                 line=dict(color=colors[code], width=1, dash='dash'), opacity=0.45, hovertemplate="Throttle: %{y}%"
             ), row=1, col=1, secondary_y=True)
             
-        # Plot time delta variations relative to baseline (Driver 1)
+        # Plot time delta variations relative to baseline
         for code in chosen_codes[1:]:
             fig.add_trace(go.Scatter(
                 x=df['Distance'], y=df[f'Delta_vs_{code}'], name=f"Delta: {chosen_codes[0]} vs {code}",
                 line=dict(color=colors[code], width=1.5, dash='dot'), hovertemplate="Distance: %{x}m<br>Gap: %{y}s"
             ), row=2, col=1)
             
-        # High-Density Dashboard Theme Styling
+        # Polished Theme Layout Spacing Configuration
         fig.update_layout(
             template="plotly_dark",
-            height=680,
+            height=700,
             hovermode="x unified",
-            margin=dict(l=50, r=50, t=30, b=50),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            margin=dict(l=50, r=50, t=70, b=50), # Expanded top margin padding
+            legend=dict(
+                orientation="h", 
+                yanchor="bottom", 
+                y=1.06, # Pushed legend slightly higher up
+                xanchor="right", 
+                x=1
+            )
         )
         
         fig.update_xaxes(title_text="Track Spatial Coordinates (Meters)", row=2, col=1)
