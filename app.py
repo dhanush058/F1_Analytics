@@ -5,25 +5,43 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 
-# 1. Primary Workspace Configuration
+# 1. Primary Page Workspace Configuration
 st.set_page_config(page_title="F1 Telemetry Analytics", layout="wide")
 
-# Enable performance data caching
+# Enable automatic local data caching
 try:
     fastf1.Cache.enable_cache('f1_cache')
 except Exception:
     pass
 
-# 2. Sidebar Layout - Stage 1 Environment Dropdowns (Using Official API Names)
+# 2. Automated Season Calendar Fetcher (Guarantees every dropdown choice exists for that year)
+@st.cache_data(ttl=86400)
+def fetch_season_circuits(year):
+    try:
+        schedule = fastf1.get_event_schedule(year)
+        # Filter out pre-season testing sessions
+        valid_events = schedule[schedule['EventFormat'] != 'testing']
+        
+        # Guard against unplayed future 2026 weekends
+        current_time = pd.Timestamp.now(tz='UTC')
+        completed_events = valid_events[pd.to_datetime(valid_events['EventDate'], utc=True) < current_time]
+        
+        if completed_events.empty:
+            return ["No Completed Races Available"]
+            
+        return completed_events['EventName'].tolist()
+    except Exception:
+        # Emergency robust fallback strings if the database server has a connection issue
+        return ["Belgian Grand Prix", "Italian Grand Prix", "British Grand Prix", "Monaco Grand Prix", "Austrian Grand Prix"]
+
+# 3. Sidebar Layout - Stage 1 Environment Dropdowns
 with st.sidebar:
     st.header("Pipeline Configurations")
     selected_year = st.selectbox("Season Year", [2024, 2025, 2026], index=0)
     
-    # FIXED: Using explicit official location names so the API never fails to resolve the session file
-    selected_track = st.selectbox(
-        "Grand Prix Location", 
-        ["Belgian Grand Prix", "Italian Grand Prix", "British Grand Prix", "Monaco Grand Prix", "Austrian Grand Prix", "Dutch Grand Prix", "Japanese Grand Prix", "Singapore Grand Prix"]
-    )
+    # CIRCUIT IS NOW FULLY DYNAMIC: Populates only with real races from that specific year calendar
+    track_options = fetch_season_circuits(selected_year)
+    selected_track = st.selectbox("Grand Prix Location / Circuit", track_options, index=0)
     
     selected_session = st.selectbox(
         "Session Type", 
@@ -31,13 +49,15 @@ with st.sidebar:
         index=0
     )
 
-# Translate reader-friendly session names to official API tokens
+# Translate reader-friendly session choices to official API database tokens
 session_map = {"Qualifying": "Q", "Race": "R", "Practice 1": "FP1", "Practice 2": "FP2", "Practice 3": "FP3"}
 api_session_token = session_map[selected_session]
 
-# 3. Dynamic Roster Discovery Engine (Maps Full Names to Abbreviation Tokens)
+# 4. Dynamic Driver Roster Discovery Engine (Maps Full Names to Abbreviation Tokens)
 @st.cache_data(ttl=3600)
 def discover_session_roster(year, location, session_type):
+    if location == "No Completed Races Available":
+        return {}
     try:
         session = fastf1.get_session(year, location, session_type)
         session.load(telemetry=False, laps=False, weather=False)
@@ -49,39 +69,36 @@ def discover_session_roster(year, location, session_type):
     except Exception:
         return {}
 
-# Fetch available drivers for the selected weekend
+# Generate active lookup dictionary based on track parameters
 driver_lookup_table = discover_session_roster(selected_year, selected_track, api_session_token)
 
-# 4. Sidebar Configuration - Stage 2 Separate Driver Dropdowns
+# 5. Sidebar Layout - Stage 2 Separate Driver Dropdowns
 with st.sidebar:
     st.subheader("Driver Alignment Selection")
     if driver_lookup_table:
         full_names_list = sorted(list(driver_lookup_table.keys()))
         
-        # Individual separate dropdown selectors
+        # Dedicated independent dropdown selectors using clear full names
         driver_name_1 = st.selectbox("Primary Driver (Driver 1)", full_names_list, index=0)
         
-        # Set default to second driver if available to prevent auto-mirroring conflicts
-        default_2 = 1 if len(full_names_list) > 1 else 0
+        default_2 = min(1, len(full_names_list) - 1)
         driver_name_2 = st.selectbox("Comparison Driver (Driver 2)", full_names_list, index=default_2)
         
-        # Driver 3 dropdown includes an optional '[None]' state
         driver_name_3 = st.selectbox("Optional Comparison (Driver 3)", ["None"] + full_names_list, index=0)
         
-        # Compile lists based on active selections
+        # Group selections and clean tokens
         active_names = [driver_name_1, driver_name_2]
         chosen_codes = [driver_lookup_table[driver_name_1], driver_lookup_table[driver_name_2]]
         
         if driver_name_3 != "None":
             active_names.append(driver_name_3)
             chosen_codes.append(driver_lookup_table[driver_name_3])
-            
     else:
         st.error("❌ Session Data Unavailable")
-        st.info("The telemetry files for this event combination are not active or released on the server yet. Please switch to a completed 2024 or 2025 Grand Prix.")
+        st.info("The telemetry files for this event combination are not released yet. Try checking a different session type.")
         active_names, chosen_codes = [], []
 
-# 5. Branded Dynamic Header Injection
+# 6. Branded Dynamic Header Injection
 st.markdown(
     f"""
     <div style="
@@ -119,7 +136,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# 6. Flexible Multi-Driver Telemetry Resampling Engine
+# 7. Flexible Multi-Driver Telemetry Resampling Engine
 @st.cache_data(ttl=3600)
 def load_multi_driver_telemetry(year, location, session_type, driver_codes):
     try:
@@ -141,7 +158,7 @@ def load_multi_driver_telemetry(year, location, session_type, driver_codes):
             streams[code] = tel
             min_max_distance = min(min_max_distance, tel['Distance'].max())
             
-        # Resample onto a shared absolute distance tracking grid
+        # Resample data parameters onto a shared absolute 10-meter spatial distance tracking grid
         distance_grid = np.arange(0, min_max_distance, 10)
         grid_data = {'Distance': distance_grid}
         
@@ -152,7 +169,7 @@ def load_multi_driver_telemetry(year, location, session_type, driver_codes):
             
         df = pd.DataFrame(grid_data)
         
-        # Generate comparative delta analytics relative to Driver 1 baseline
+        # Calculate Delta performance arrays relative to Driver 1 baseline
         base_code = driver_codes[0]
         for code in driver_codes[1:]:
             df[f'Delta_vs_{code}'] = df[f'Time_{base_code}'] - df[f'Time_{code}']
@@ -161,9 +178,9 @@ def load_multi_driver_telemetry(year, location, session_type, driver_codes):
     except Exception as e:
         return str(e)
 
-# 7. Core Operational Execution Routine
+# 8. Operational Execution Routine & Validation Check
 if len(chosen_codes) < 2:
-    st.warning("⚠️ Configuration Alert: Make selections in your separate driver dropdown menus to trigger calculation arrays.")
+    st.warning("⚠️ Configuration Alert: Make selections in your separate driver dropdown menus to trigger tracking arrays.")
 elif len(chosen_codes) != len(set(chosen_codes)):
     st.error("🏁 Selection Conflict: Please ensure you do not select the same driver across multiple dropdown menus.")
 else:
@@ -173,14 +190,14 @@ else:
     if isinstance(df, str):
         st.error("🏁 Operational Boundary Detected")
         if "loaded yet" in df or "not been loaded" in df:
-            st.info("Data unreleased on the server. Change your Year selector to **2024** or **2025** to test this track location.")
+            st.info("The chosen session has not been published yet. Select a completed Grand Prix weekend from the dropdown.")
         elif "MISSING_LAP" in df:
-            st.info(f"Driver **{df.split('_')[-1]}** did not log a valid timed lap in this session (e.g., a technical DNF). Change that specific selector.")
+            st.info(f"Driver **{df.split('_')[-1]}** did not record a valid timed lap during this session. Please change that specific selector.")
         else:
-            st.info(f"API Backend Response Trace: {df}")
+            st.info(f"API Backend Trace: {df}")
             
     elif isinstance(df, pd.DataFrame):
-        # 8. Multi-Tier Subplot Construction (Velocity, Throttle, and Deltas)
+        # 9. Multi-Tier Subplot Construction (Velocity, Throttle, and Deltas)
         fig = make_subplots(
             rows=2, cols=1, 
             shared_xaxes=True, 
@@ -190,27 +207,25 @@ else:
             subplot_titles=("Velocity Profiles & Throttle Inputs Map", f"Time Delta Performance Gap Relative to {chosen_codes[0]} (Seconds)")
         )
         
-        # Color palettes for 3 distinct data traces
-        color_palette = [ '#00D2BE', '#FF8700', '#FF33FF' ]
+        color_palette = ['#00D2BE', '#FF8700', '#FF33FF']
         colors = {code: color_palette[i] for i, code in enumerate(chosen_codes)}
             
-        # Plot Velocity (Solid) and Throttle (Dashed) lines for all active dropdown selections
         for code in chosen_codes:
             full_name = active_names[chosen_codes.index(code)]
             
-            # Speed Trace (Primary Axis)
+            # Velocity Profiles (Primary Axis)
             fig.add_trace(go.Scatter(
                 x=df['Distance'], y=df[f'Speed_{code}'], name=f"{full_name} Speed",
                 line=dict(color=colors[code], width=2), hovertemplate="Distance: %{x}m<br>Speed: %{y} km/h"
             ), row=1, col=1, secondary_y=False)
             
-            # Throttle Trace (Secondary Axis)
+            # Throttle Inputs Profiles (Secondary Axis)
             fig.add_trace(go.Scatter(
                 x=df['Distance'], y=df[f'Throttle_{code}'], name=f"{code} Throttle",
                 line=dict(color=colors[code], width=1, dash='dash'), opacity=0.45, hovertemplate="Throttle: %{y}%"
             ), row=1, col=1, secondary_y=True)
             
-        # Plot time delta variations for additional drivers relative to baseline (Driver 1)
+        # Plot time delta variations relative to baseline (Driver 1)
         for code in chosen_codes[1:]:
             fig.add_trace(go.Scatter(
                 x=df['Distance'], y=df[f'Delta_vs_{code}'], name=f"Delta: {chosen_codes[0]} vs {code}",
@@ -233,7 +248,7 @@ else:
         
         st.plotly_chart(fig, use_container_width=True)
 
-# 9. Portfolio Documentation & Analytical User Guide
+# 10. Portfolio Documentation & Analytical User Guide
 st.markdown("---")
 st.subheader("💡 Analytical Operations & System Documentation")
 
