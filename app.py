@@ -8,7 +8,7 @@ import numpy as np
 # 1. Primary Page Workspace Configuration
 st.set_page_config(page_title="F1 Telemetry Analytics", layout="wide")
 
-# Enable automatic local data caching
+# Enable performance data caching
 try:
     fastf1.Cache.enable_cache('f1_cache')
 except Exception:
@@ -51,6 +51,9 @@ api_session_token = session_map[selected_session]
 # 4. Dynamic Driver Roster Discovery Engine
 @st.cache_data(ttl=3600)
 def discover_session_roster(year, location, session_type):
+    # HARD GUARD RAIL: Catch the uncompiled 2025 Australia API bug instantly
+    if year == 2025 and "Australia" in location:
+        return {}
     if location == "No Completed Races Available":
         return {}
     try:
@@ -64,6 +67,7 @@ def discover_session_roster(year, location, session_type):
     except Exception:
         return {}
 
+# Build selection translation mapping table
 driver_lookup_table = discover_session_roster(selected_year, selected_track, api_session_token)
 
 # 5. Sidebar Layout - Stage 2 Separate Driver Dropdowns
@@ -86,8 +90,8 @@ with st.sidebar:
             active_names.append(driver_name_3)
             chosen_codes.append(driver_lookup_table[driver_name_3])
     else:
-        st.error("❌ Session Data Unavailable")
-        st.info("The telemetry files for this event combination are not released yet. Try checking a different session type.")
+        st.error("❌ Telemetry File Missing on API Server")
+        st.info("The configuration for this weekend is unavailable on the remote database server. **Note:** The 2025 Australian Grand Prix data streams are uncompiled by FastF1. Please switch to **2024** or select another GP on the list.")
         active_names, chosen_codes = [], []
 
 # 6. Branded Dynamic Header Injection
@@ -168,82 +172,68 @@ def load_multi_driver_telemetry(year, location, session_type, driver_codes):
     except Exception as e:
         return str(e)
 
-# 8. Operational Execution Routine & Validation Check
-if len(chosen_codes) < 2:
-    st.warning("⚠️ Configuration Alert: Make selections in your separate driver dropdown menus to trigger tracking arrays.")
-elif len(chosen_codes) != len(set(chosen_codes)):
-    st.error("🏁 Selection Conflict: Please ensure you do not select the same driver across multiple dropdown menus.")
-else:
-    with st.spinner("Processing telemetry arrays across spatial coordinates..."):
-        df = load_multi_driver_telemetry(selected_year, selected_track, api_session_token, chosen_codes)
-        
-    if isinstance(df, str):
-        st.error("🏁 Operational Boundary Detected")
-        if "loaded yet" in df or "not been loaded" in df:
-            st.info("The chosen session has not been published yet. Select a completed Grand Prix weekend from the dropdown.")
-        elif "MISSING_LAP" in df:
-            st.info(f"Driver **{df.split('_')[-1]}** did not record a valid timed lap during this session. Please change that specific selector.")
-        else:
-            st.info(f"API Backend Trace: {df}")
+# 8. Operational Execution Routine
+if len(chosen_codes) >= 2:
+    if len(chosen_codes) != len(set(chosen_codes)):
+        st.error("🏁 Selection Conflict: Duplicate drivers chosen across separate menu slots.")
+    else:
+        with st.spinner("Processing telemetry arrays across spatial coordinates..."):
+            df = load_multi_driver_telemetry(selected_year, selected_track, api_session_token, chosen_codes)
             
-    elif isinstance(df, pd.DataFrame):
-        # 9. Multi-Tier Subplot Construction (FIXED Spacing layout variables)
-        fig = make_subplots(
-            rows=2, cols=1, 
-            shared_xaxes=True, 
-            vertical_spacing=0.08,
-            row_heights=[0.65, 0.35],
-            specs=[[{"secondary_y": True}], [{"secondary_y": False}]],
-            # Added line break padding to keep headers completely clear of the legend
-            subplot_titles=("<br>Velocity Profiles & Throttle Inputs Map", "<br>Time Delta Performance Gap Relative to Primary Driver (Seconds)")
-        )
-        
-        color_palette = ['#00D2BE', '#FF8700', '#FF33FF']
-        colors = {code: color_palette[i] for i, code in enumerate(chosen_codes)}
-            
-        for code in chosen_codes:
-            full_name = active_names[chosen_codes.index(code)]
-            
-            # Velocity Profiles
-            fig.add_trace(go.Scatter(
-                x=df['Distance'], y=df[f'Speed_{code}'], name=f"{full_name} Speed",
-                line=dict(color=colors[code], width=2), hovertemplate="Distance: %{x}m<br>Speed: %{y} km/h"
-            ), row=1, col=1, secondary_y=False)
-            
-            # Throttle Inputs Profiles
-            fig.add_trace(go.Scatter(
-                x=df['Distance'], y=df[f'Throttle_{code}'], name=f"{code} Throttle",
-                line=dict(color=colors[code], width=1, dash='dash'), opacity=0.45, hovertemplate="Throttle: %{y}%"
-            ), row=1, col=1, secondary_y=True)
-            
-        # Plot time delta variations relative to baseline
-        for code in chosen_codes[1:]:
-            fig.add_trace(go.Scatter(
-                x=df['Distance'], y=df[f'Delta_vs_{code}'], name=f"Delta: {chosen_codes[0]} vs {code}",
-                line=dict(color=colors[code], width=1.5, dash='dot'), hovertemplate="Distance: %{x}m<br>Gap: %{y}s"
-            ), row=2, col=1)
-            
-        # Polished Theme Layout Spacing Configuration
-        fig.update_layout(
-            template="plotly_dark",
-            height=700,
-            hovermode="x unified",
-            margin=dict(l=50, r=50, t=70, b=50), # Expanded top margin padding
-            legend=dict(
-                orientation="h", 
-                yanchor="bottom", 
-                y=1.06, # Pushed legend slightly higher up
-                xanchor="right", 
-                x=1
+        if isinstance(df, str):
+            st.error("🏁 Operational Boundary Detected")
+            st.info(f"API Trace Information: {df}")
+                
+        elif isinstance(df, pd.DataFrame):
+            # 9. Multi-Tier Subplot Construction (FIXED Spacing and margins)
+            fig = make_subplots(
+                rows=2, cols=1, 
+                shared_xaxes=True, 
+                vertical_spacing=0.08,
+                row_heights=[0.65, 0.35],
+                specs=[[{"secondary_y": True}], [{"secondary_y": False}]],
+                subplot_titles=("<br>Velocity Profiles & Throttle Inputs Map", "<br>Time Delta Performance Gap Relative to Primary Driver (Seconds)")
             )
-        )
-        
-        fig.update_xaxes(title_text="Track Spatial Coordinates (Meters)", row=2, col=1)
-        fig.update_yaxes(title_text="Velocity (km/h)", row=1, col=1, secondary_y=False)
-        fig.update_yaxes(title_text="Throttle Input (%)", row=1, col=1, secondary_y=True, range=[0, 105], showgrid=False)
-        fig.update_yaxes(title_text="Time Delta (s)", row=2, col=1)
-        
-        st.plotly_chart(fig, use_container_width=True)
+            
+            color_palette = ['#00D2BE', '#FF8700', '#FF33FF']
+            colors = {code: color_palette[i] for i, code in enumerate(chosen_codes)}
+                
+            for code in chosen_codes:
+                full_name = active_names[chosen_codes.index(code)]
+                
+                # Velocity Line
+                fig.add_trace(go.Scatter(
+                    x=df['Distance'], y=df[f'Speed_{code}'], name=f"{full_name} Speed",
+                    line=dict(color=colors[code], width=2), hovertemplate="Distance: %{x}m<br>Speed: %{y} km/h"
+                ), row=1, col=1, secondary_y=False)
+                
+                # Throttle Line
+                fig.add_trace(go.Scatter(
+                    x=df['Distance'], y=df[f'Throttle_{code}'], name=f"{code} Throttle",
+                    line=dict(color=colors[code], width=1, dash='dash'), opacity=0.45, hovertemplate="Throttle: %{y}%"
+                ), row=1, col=1, secondary_y=True)
+                
+            # Delta Line
+            for code in chosen_codes[1:]:
+                fig.add_trace(go.Scatter(
+                    x=df['Distance'], y=df[f'Delta_vs_{code}'], name=f"Delta: {chosen_codes[0]} vs {code}",
+                    line=dict(color=colors[code], width=1.5, dash='dot'), hovertemplate="Distance: %{x}m<br>Gap: %{y}s"
+                ), row=2, col=1)
+                
+            fig.update_layout(
+                template="plotly_dark",
+                height=700,
+                hovermode="x unified",
+                margin=dict(l=50, r=50, t=70, b=50),
+                legend=dict(orientation="h", yanchor="bottom", y=1.06, xanchor="right", x=1)
+            )
+            
+            fig.update_xaxes(title_text="Track Spatial Coordinates (Meters)", row=2, col=1)
+            fig.update_yaxes(title_text="Velocity (km/h)", row=1, col=1, secondary_y=False)
+            fig.update_yaxes(title_text="Throttle Input (%)", row=1, col=1, secondary_y=True, range=[0, 105], showgrid=False)
+            fig.update_yaxes(title_text="Time Delta (s)", row=2, col=1)
+            
+            st.plotly_chart(fig, use_container_width=True)
 
 # 10. Portfolio Documentation & Analytical User Guide
 st.markdown("---")
