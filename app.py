@@ -51,7 +51,7 @@ api_session_token = session_map[selected_session]
 # 4. Dynamic Driver Roster Discovery Engine
 @st.cache_data(ttl=3600)
 def discover_session_roster(year, location, session_type):
-    # HARD GUARD RAIL: Catch the uncompiled 2025 Australia API bug instantly
+    # CRITICAL GUARD RAIL: Catch the uncompiled 2025 Australia API server bug instantly
     if year == 2025 and "Australia" in location:
         return {}
     if location == "No Completed Races Available":
@@ -91,7 +91,7 @@ with st.sidebar:
             chosen_codes.append(driver_lookup_table[driver_name_3])
     else:
         st.error("❌ Telemetry File Missing on API Server")
-        st.info("The configuration for this weekend is unavailable on the remote database server. **Note:** The 2025 Australian Grand Prix data streams are uncompiled by FastF1. Please switch to **2024** or select another GP on the list.")
+        st.info("The data streams for this specific weekend are completely unavailable on the FastF1 database servers. **Note:** The 2025 Australian Grand Prix data streams are uncompiled. Please switch to **2024** or select another GP on the list.")
         active_names, chosen_codes = [], []
 
 # 6. Branded Dynamic Header Injection
@@ -135,6 +135,10 @@ st.markdown(
 # 7. Flexible Multi-Driver Telemetry Resampling Engine
 @st.cache_data(ttl=3600)
 def load_multi_driver_telemetry(year, location, session_type, driver_codes):
+    # CRITICAL RUNTIME GUARD: Block the uncompiled 2025 Australia telemetry loading loop immediately
+    if year == 2025 and "Australia" in location:
+        return "UNCOMPILED_API_DATASET"
+        
     try:
         session = fastf1.get_session(year, location, session_type)
         session.load(telemetry=True, laps=True)
@@ -182,10 +186,13 @@ if len(chosen_codes) >= 2:
             
         if isinstance(df, str):
             st.error("🏁 Operational Boundary Detected")
-            st.info(f"API Trace Information: {df}")
+            if df == "UNCOMPILED_API_DATASET" or "loaded yet" in df or "not been loaded" in df:
+                st.info("The telemetry stream logs for this session are missing or completely uncompiled on the server database. Please switch the Year dropdown selection to **2024** or choose another Grand Prix location.")
+            else:
+                st.info(f"API Trace Information: {df}")
                 
         elif isinstance(df, pd.DataFrame):
-            # 9. Multi-Tier Subplot Construction (FIXED Spacing and margins)
+            # 9. Multi-Tier Subplot Construction (Clean spacing layout)
             fig = make_subplots(
                 rows=2, cols=1, 
                 shared_xaxes=True, 
