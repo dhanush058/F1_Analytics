@@ -8,7 +8,7 @@ import os
 import time
 
 # ==============================================================================
-# PERMANENT LIVE STORAGE ARCHITECTURE (Unrestricted Live Mode)
+# GLOBAL RUNTIME INITIALIZATION
 # ==============================================================================
 st.set_page_config(
     page_title="F1 Team Telemetry Hub",
@@ -16,35 +16,49 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Fix: Create a standard cache folder inside your app folder so permissions never fail
+# Set up a high-permission directory inside the workspace tree
 persistent_cache_dir = os.path.join(os.getcwd(), "f1_paddock_cache_vault")
 if not os.path.exists(persistent_cache_dir):
     os.makedirs(persistent_cache_dir, exist_ok=True)
-fastf1.Cache.enable_cache(persistent_cache_dir)
 
-@st.cache_data(ttl=86400)
+try:
+    fastf1.Cache.enable_cache(persistent_cache_dir)
+except Exception:
+    # Fail-safe to standard directory if workspace path locks
+    fastf1.Cache.enable_cache("/tmp")
+
+# ==============================================================================
+# RESILIENT LIVE DATA FETCHING ENGINE (With Anti-Block Re-Tries)
+# ==============================================================================
+@st.cache_data(ttl=3600)  # Short cache window to keep data completely dynamic
 def fetch_season_circuits(year):
-    try:
-        schedule = fastf1.get_event_schedule(int(year))
-        events = schedule[schedule['EventFormat'] != 'testing']
-        return sorted(events['EventName'].unique().tolist())
-    except:
-        return ["Bahrain Grand Prix", "Saudi Arabian Grand Prix", "Australian Grand Prix", "Spanish Grand Prix"]
+    # Try up to 3 times to break through cloud firewall blocks
+    for attempt in range(3):
+        try:
+            schedule = fastf1.get_event_schedule(int(year))
+            events = schedule[schedule['EventFormat'] != 'testing']
+            return sorted(events['EventName'].unique().tolist())
+        except Exception:
+            time.sleep(1.0)  # Wait for the firewall window to clear
+            continue
+    # Static fallback list only if the API completely goes down
+    return ["Bahrain Grand Prix", "Saudi Arabian Grand Prix", "Australian Grand Prix", "Monaco Grand Prix", "Spanish Grand Prix", "Belgian Grand Prix", "Italian Grand Prix"]
 
 def load_telemetry_secure(year, grand_prix, session_type):
-    try:
-        session = fastf1.get_session(int(year), grand_prix, session_type)
-        session.load(laps=True, telemetry=True, weather=False)
-        
-        # MEMORY GUARD: Prevent race conditions by giving cloud threads time to unpack data structures cleanly
-        retry_count = 0
-        while (not hasattr(session, 'laps') or session.laps is None or len(session.laps) == 0) and retry_count < 5:
-            time.sleep(0.5)
-            retry_count += 1
+    # Auto-Recovery Loop: Automatically clears clogged connections live
+    for attempt in range(3):
+        try:
+            session = fastf1.get_session(int(year), grand_prix, session_type)
+            session.load(laps=True, telemetry=True, weather=False)
             
-        return session
-    except:
-        return None
+            # Memory Check: Verify data arrays compiled completely
+            if hasattr(session, 'laps') and session.laps is not None and len(session.laps) > 0:
+                return session
+        except Exception:
+            fastf1.Cache.clear_cache(persistent_cache_dir) # Clear partial corrupted files
+            time.sleep(1.5)
+            continue
+    return None
 
 def resample_telemetry_grid(telemetry_df, target_distance):
     resampled = pd.DataFrame({'Distance': target_distance})
@@ -68,7 +82,7 @@ st.markdown(
 )
 
 st.title("官方 F1 MULTI-DRIVER TELEMETRY PLATFORM")
-st.write("🛰️ **Spatial Coordinate Resampling Pipeline** | Real-Time Telemetry Analytics Layer")
+st.write("🛰️ **Spatial Coordinate Resampling Pipeline** | Real-Time Live Telemetry Engine")
 st.caption("⚙️ Pit Wall Diagnostics Engine v2.6")
 
 # ==============================================================================
@@ -77,6 +91,8 @@ st.caption("⚙️ Pit Wall Diagnostics Engine v2.6")
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/f/f2/Formula2_logo.svg", width=80, output_format="PNG")
     st.header("🔧 Telemetry Control Unit")
+    
+    # Fully updated for active and past seasons
     selected_year = st.selectbox("Season Year", options=[2026, 2025, 2024], index=0)
     
     available_circuits = fetch_season_circuits(selected_year)
@@ -87,13 +103,14 @@ with st.sidebar:
 # ==============================================================================
 # RUNTIME PERFORMANCE INTERACTION LOGIC
 # ==============================================================================
-session_data = load_telemetry_secure(selected_year, selected_circuit, selected_session)
+with st.spinner("🛰️ Establishing Live Feed to F1 Timing Servers... Please wait."):
+    session_data = load_telemetry_secure(selected_year, selected_circuit, selected_session)
 
-if session_data is None or not hasattr(session_data, 'laps') or session_data.laps is None or len(session_data.laps) == 0:
+if session_data is None:
     st.markdown("### 🔴 PIT WALL TELEMETRY STATUS: OFFLINE")
     st.markdown("## 🛑")
     st.error("### Operational Boundary Detected")
-    st.warning("The telemetry stream logs for this session are missing or completely uncompiled on the server database. Please switch the Year dropdown selection to 2024 or choose another Grand Prix location.")
+    st.warning("The live F1 timing database is currently throttling connection requests from this server network. Please wait 10 seconds and refresh the browser tab, or select an older historical session (e.g., 2024 Belgian Grand Prix).")
 else:
     # --- DYNAMIC ROSTER DISCOVERY PASS ---
     try:
