@@ -8,7 +8,7 @@ import os
 import time
 
 # ==============================================================================
-# HARDENED LIVE STORAGE ARCHITECTURE (Bypasses /tmp folder wipes)
+# PERMANENT LIVE STORAGE ARCHITECTURE (Unrestricted Live Mode)
 # ==============================================================================
 st.set_page_config(
     page_title="F1 Team Telemetry Hub",
@@ -16,8 +16,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# FORCE FastF1 to use Streamlit's permanent internal directory instead of /tmp
-persistent_cache_dir = os.path.expanduser("~/.fastf1_paddock_cache")
+# Fix: Create a standard cache folder inside your app folder so permissions never fail
+persistent_cache_dir = os.path.join(os.getcwd(), "f1_paddock_cache_vault")
 if not os.path.exists(persistent_cache_dir):
     os.makedirs(persistent_cache_dir, exist_ok=True)
 fastf1.Cache.enable_cache(persistent_cache_dir)
