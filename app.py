@@ -54,7 +54,6 @@ def resample_telemetry_grid(telemetry_df, target_distance):
 # ==============================================================================
 # FORMULA 1 HIGH-PERFORMANCE BRANDING THEME
 # ==============================================================================
-# Custom CSS injector to style Streamlit components like a pit lane monitor
 st.markdown(
     """
     <style>
@@ -75,7 +74,7 @@ st.caption("⚙️ Pit Wall Diagnostics Engine v2.6")
 # SIDEBAR CONTROL WORKSPACE
 # ==============================================================================
 with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/f/f2/Formula2_logo.svg", width=80, output_format="PNG") # Dynamic paddock branding accent
+    st.image("https://upload.wikimedia.org/wikipedia/commons/f/f2/Formula2_logo.svg", width=80, output_format="PNG")
     st.header("🔧 Telemetry Control Unit")
     selected_year = st.selectbox("Season Year", options=[2026, 2025, 2024], index=0)
     
@@ -90,13 +89,11 @@ with st.sidebar:
 session_data = load_telemetry_secure(selected_year, selected_circuit, selected_session)
 
 if session_data is None or not hasattr(session_data, 'laps') or session_data.laps is None:
-    # TEAM PIT WALL DEFENSIVE NOTICE LAYOUT
     st.markdown("### 🔴 PIT WALL TELEMETRY STATUS: OFFLINE")
     st.markdown("## 🛑")
     st.error("### Operational Boundary Detected")
     st.warning("The telemetry stream logs for this session are missing or completely uncompiled on the server database. Please switch the Year dropdown selection to 2024 or choose another Grand Prix location.")
 else:
-    # --- DYNAMIC ROSTER DISCOVERY PASS ---
     try:
         results_df = session_data.results
         driver_mapping = {}
@@ -109,7 +106,6 @@ else:
         driver_mapping = {"🏎️ Max Verstappen (VER)": "VER", "🏎️ Lando Norris (NOR)": "NOR", "🏎️ Lewis Hamilton (HAM)": "HAM"}
         driver_options = list(driver_mapping.keys())
 
-    # SAFE UI ASSIGNMENT: Render dropdowns with unique keys to isolate browser states
     with st.sidebar:
         st.markdown("---")
         st.subheader("📊 Driver Selections")
@@ -181,19 +177,15 @@ else:
             specs=[[{"secondary_y": True}], [{"secondary_y": False}]]
         )
         
-        # Primary Driver Traces (Electric Cyan Accent)
         fig.add_trace(gr.Scatter(x=target_grid, y=grid_d1['Speed'], name=f"{driver1} Velocity", line=dict(color="#00D2BE", width=2.5)), row=1, col=1, secondary_y=False)
         fig.add_trace(gr.Scatter(x=target_grid, y=grid_d1['Throttle'], name=f"{driver1} Throttle %", line=dict(color="#00D2BE", width=1.5, dash='dash'), opacity=0.3), row=1, col=1, secondary_y=True)
         
-        # Comparison Driver 2 Traces (Racing Papaya Orange Accent)
         fig.add_trace(gr.Scatter(x=target_grid, y=grid_d2['Speed'], name=f"{driver2} Velocity", line=dict(color="#FF8700", width=2.5)), row=1, col=1, secondary_y=False)
         fig.add_trace(gr.Scatter(x=target_grid, y=grid_d2['Throttle'], name=f"{driver2} Throttle %", line=dict(color="#FF8700", width=1.5, dash='dash'), opacity=0.3), row=1, col=1, secondary_y=True)
         
-        # Optional Driver 3 Trace (Maranello Crimson Accent)
         if include_d3:
             fig.add_trace(gr.Scatter(x=target_grid, y=grid_d3['Speed'], name=f"{driver3} Velocity", line=dict(color="#E10600", width=2.5)), row=1, col=1, secondary_y=False)
         
-        # Delta Time Performance Trace (Clean White Reference Line)
         fig.add_trace(gr.Scatter(x=target_grid, y=delta_time, name=f"Pacing Margin (Ref: {driver1})", line=dict(color="#FFFFFF", width=2)), row=2, col=1)
         
         fig.update_layout(
@@ -211,36 +203,32 @@ else:
         st.plotly_chart(fig, use_container_width=True)
         
         # ==============================================================================
-        # COMPREHENSIVE USER GUIDE & TECHNICAL DATA MANUAL
+        # SIMPLIFIED, PROFESSIONAL EXECUTIVE GUIDE SECTION
         # ==============================================================================
         st.markdown("---")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("### 📖 Dashboard User Playbook")
+            st.markdown("### 📖 Quick-Start User Manual")
             st.markdown(
                 """
-                Welcome to the professional-tier Formula 1 diagnostic environment. Follow this playbook to unlock actionable performance analysis:
-                
-                * **Step 1: Scope Selection:** In the sidebar control panel, select the desired season year, circuit location, and event session profile (e.g., Qualifying or Race).
-                * **Step 2: Driver Matrix Target Mapping:** Choose your driver line-ups. The **Primary Driver** acts as your absolute `0.00` statistical baseline. The charts will calculate exactly where the **Comparison Drivers** gain or lose pace against this reference.
-                * **Step 3: Multi-Axis Zoom Exploration:** Click and drag a box across any sector of the Plotly charts to zoom in simultaneously on velocity profiles and vehicle inputs for specific corners. Double-click the chart to reset the viewport.
-                * **Step 4: Toggle Ambient Ambiance:** Use the audio toggle switch to activate a vintage V8 engine notes stream, optimizing the immersive portfolio experience.
+                1. **Select Context:** Set the desired **Season Year**, **Circuit**, and **Session Type** in the left panel.
+                2. **Choose Drivers:** Map driver profiles to isolate matchups. The **Primary Driver** acts as your flat statistical `0.00` baseline.
+                3. **Analyze:** * Click and drag to zoom into specific corner sectors.
+                   * Double-click anywhere on the canvas to reset your layout view.
                 """
             )
             
         with col2:
-            st.markdown("### 🛠️ Advanced Analytical Deep-Dive")
+            st.markdown("### 🛠️ Core Engineering & Mathematics Documentation")
             st.markdown(
                 """
-                This application implements real-world race engineering methodologies to handle dirty time-series sensor data streams:
-                
-                * **The Spatial Coordinate Resampling Pipeline:** F1 telemetry data logs asynchronously (e.g., different car sensors fire at completely different intervals, creating mismatched sample arrays). This dashboard runs a 1D linear array interpolation (`numpy.interp`) to standardize all incoming data streams onto a uniform absolute distance track grid measured down to every **10 meters**.
-                * **Interpreting the Performance Gap Time Delta (Row 2):** The white trace calculates cumulative micro-delays between drivers. 
-                  * **Trending Upwards (↗️):** The comparison driver is actively *losing* time margin relative to your primary baseline driver.
-                  * **Trending Downwards (↘️):** The comparison driver is actively *gaining* ground and pulling ahead through that track sector.
-                * **Throttle Trace Overlay:** The dashed curves show exact foot-to-pedal behavior. Isolate who is braver on corner exits by verifying who punches back up to 100% full throttle first!
+                * **1D Linear Array Interpolation (`numpy.interp`):** Standardizes asynchronous telemetry data intervals onto an absolute uniform grid measured down to every **10 meters** to allow clear data comparisons.
+                * **The Pacing Margin Trace (Row 2 Chart):**
+                  * **Trending Upwards (↗️):** Comparison Driver is **losing pace** relative to the baseline.
+                  * **Trending Downwards (↘️):** Comparison Driver is **gaining ground** on the baseline.
+                * **Throttle Curve Map:** The dashed line traces driver throttle profiles. Use this to identify who picks up throttle quicker on corner exits.
                 """
             )
             
