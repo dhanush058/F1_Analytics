@@ -32,10 +32,10 @@ def fetch_season_circuits(year):
 def load_telemetry_secure(year, grand_prix, session_type):
     try:
         session = fastf1.get_session(int(year), grand_prix, session_type)
-        # CRITICAL FIX: Explicitly enforce full synchronous loading of both laps and channels
+        # Force full synchronous loading of both laps and channels
         session.load(laps=True, telemetry=True, weather=False)
         return session
-    exceptException as e:
+    except Exception as e:
         return None
 
 def resample_telemetry_grid(telemetry_df, target_distance):
@@ -112,7 +112,7 @@ else:
             )
 
     try:
-        # Secure the mapping fallback lookup values defensively
+        # Secure the mapping lookup values defensively
         driver1 = driver_mapping.get(d1_label, list(driver_mapping.values())[0])
         driver2 = driver_mapping.get(d2_label, list(driver_mapping.values())[1] if len(driver_mapping) > 1 else list(driver_mapping.values())[0])
         driver3 = driver_mapping.get(d3_label, None) if d3_label != "None / Disabled" else None
@@ -123,7 +123,6 @@ else:
         fastest_d1 = laps_d1.pick_fastest()
         fastest_d2 = laps_d2.pick_fastest()
         
-        # Explicit force collection check to clear data loading boundaries
         telemetry_d1 = fastest_d1.get_telemetry().add_distance()
         telemetry_d2 = fastest_d2.get_telemetry().add_distance()
         
