@@ -8,18 +8,23 @@ import os
 import time
 
 # ==============================================================================
-# BACKEND COMPATIBILITY ROUTINES (Hidden Scratchpad Setup)
+# BACKEND COMPATIBILITY ROUTINES (Memory-First Storage Architecture)
 # ==============================================================================
 st.set_page_config(
-    page_title="Multi-Driver F1 Telemetry Analytics",
+    page_title="F1 Team Telemetry Hub",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# Set up a temporary folder path, but prepare a backup memory stream if it fails
 tmp_cache_dir = "/tmp/fastf1_cache"
-if not os.path.exists(tmp_cache_dir):
-    os.makedirs(tmp_cache_dir, exist_ok=True)
-fastf1.Cache.enable_cache(tmp_cache_dir)
+try:
+    if not os.path.exists(tmp_cache_dir):
+        os.makedirs(tmp_cache_dir, exist_ok=True)
+    fastf1.Cache.enable_cache(tmp_cache_dir)
+except Exception:
+    # If Streamlit locks the directory folder, force direct streaming from memory channels
+    fastf1.Cache.offline_mode(enabled=False)
 
 @st.cache_data(ttl=86400)
 def fetch_season_circuits(year):
@@ -35,15 +40,15 @@ def load_telemetry_secure(year, grand_prix, session_type):
         session = fastf1.get_session(int(year), grand_prix, session_type)
         session.load(laps=True, telemetry=True, weather=False)
         
-        # MEMORY GUARD: If the server thread is running too fast for the cloud disk,
+        # MEMORY GUARD: If the server thread reads too fast for the cloud disk,
         # pause momentarily to let the background arrays unpack completely.
         retry_count = 0
-        while (not hasattr(session, 'laps') or session.laps is None) and retry_count < 5:
+        while (not hasattr(session, 'laps') or session.laps is None or len(session.laps) == 0) and retry_count < 5:
             time.sleep(0.5)
             retry_count += 1
             
         return session
-    except Exception as e:
+    except:
         return None
 
 def resample_telemetry_grid(telemetry_df, target_distance):
@@ -53,17 +58,30 @@ def resample_telemetry_grid(telemetry_df, target_distance):
     return resampled
 
 # ==============================================================================
-# ORIGINAL UI HEADER LAYOUT
+# FORMULA 1 HIGH-PERFORMANCE BRANDING THEME
 # ==============================================================================
-st.title("MULTI-DRIVER TELEMETRY PLATFORM")
-st.write("Spatial Coordinate Resampling Pipeline")
-st.caption("Telemetry Diagnostics Engine")
+st.markdown(
+    """
+    <style>
+    .reportview-container { background: #111217; }
+    h1 { color: #FF1801 !important; font-family: 'Titillium Web', sans-serif; font-weight: 900; letter-spacing: -1px; }
+    .stSelectbox label { color: #E1E1E6 !important; font-weight: bold; }
+    div[data-testid="stNotification"] { border-left: 5px solid #FF1801; background-color: #1F2026; }
+    </style>
+    """, 
+    unsafe_allow_html=True
+)
+
+st.title("🏁 MULTI-DRIVER TELEMETRY PLATFORM")
+st.write("🛰️ **Spatial Coordinate Resampling Pipeline** | Real-Time Telemetry Analytics Layer")
+st.caption("⚙️ Pit Wall Diagnostics Engine v2.6")
 
 # ==============================================================================
 # SIDEBAR CONTROL WORKSPACE
 # ==============================================================================
 with st.sidebar:
-    st.header("⚙️ Configuration Panel")
+    st.image("https://upload.wikimedia.org/wikipedia/commons/f/f2/Formula2_logo.svg", width=80, output_format="PNG")
+    st.header("🔧 Telemetry Control Unit")
     selected_year = st.selectbox("Season Year", options=[2026, 2025, 2024], index=0)
     
     available_circuits = fetch_season_circuits(selected_year)
@@ -76,40 +94,35 @@ with st.sidebar:
 # ==============================================================================
 session_data = load_telemetry_secure(selected_year, selected_circuit, selected_session)
 
-if session_data is None or not hasattr(session_data, 'laps') or session_data.laps is None:
-    st.markdown("### STATUS: ONLINE")
-    st.markdown("## 🏁")
+if session_data is None or not hasattr(session_data, 'laps') or session_data.laps is None or len(session_data.laps) == 0:
+    st.markdown("### 🔴 PIT WALL TELEMETRY STATUS: OFFLINE")
+    st.markdown("## 🛑")
     st.error("### Operational Boundary Detected")
     st.warning("The telemetry stream logs for this session are missing or completely uncompiled on the server database. Please switch the Year dropdown selection to 2024 or choose another Grand Prix location.")
 else:
-    # --- DYNAMIC ROSTER DISCOVERY PASS ---
+    # --- FIXED ROSTER DISCOVERY PASS ---
     try:
-        results_df = session_data.results
-        driver_mapping = {}
-        for _, row in results_df.iterrows():
-            display_label = f"{row['FullName']} ({row['Abbreviation']})"
-            driver_mapping[display_label] = row['Abbreviation']
-        
-        driver_options = sorted(list(driver_mapping.keys()))
+        unique_drivers = sorted(session_data.laps['Driver'].dropna().unique().tolist())
+        driver_options = [f"🏎️ {d}" for d in unique_drivers]
+        driver_mapping = {f"🏎️ {d}": d for d in unique_drivers}
     except:
-        driver_mapping = {"Max Verstappen (VER)": "VER", "Lando Norris (NOR)": "NOR", "Lewis Hamilton (HAM)": "HAM"}
+        driver_mapping = {"🏎️ VER": "VER", "🏎️ NOR": "NOR", "🏎️ HAM": "HAM", "🏎️ LEC": "LEC"}
         driver_options = list(driver_mapping.keys())
 
-    # SAFE UI ASSIGNMENT: Render dropdowns and process inside a localized execution guard
     with st.sidebar:
         st.markdown("---")
-        st.subheader("Drivers Matrix Alignments")
+        st.subheader("📊 Driver Selections")
         
         ui_key = f"drivers_{selected_year}_{selected_circuit.replace(' ', '_')}"
         
         d1_label = st.selectbox("Primary Driver (Baseline)", options=driver_options, index=0, key=f"{ui_key}_d1")
-        d2_label = st.selectbox("Comparison Driver", options=driver_options, index=1 if len(driver_options) > 1 else 0, key=f"{ui_key}_d2")
+        d2_label = st.selectbox("Comparison Driver 2", options=driver_options, index=1 if len(driver_options) > 1 else 0, key=f"{ui_key}_d2")
         
         d3_options = ["None / Disabled"] + driver_options
         d3_label = st.selectbox("Optional Comparison Driver 3", options=d3_options, index=0, key=f"{ui_key}_d3")
 
         st.markdown("---")
-        enable_audio = st.toggle("Enable Workspace Ambiance (V8 Sound)", value=False)
+        enable_audio = st.toggle("🔊 Active Engine Telemetry Audio (V8)", value=False)
         if enable_audio:
             st.components.v1.html(
                 """
@@ -120,9 +133,8 @@ else:
             )
 
     try:
-        # Secure the mapping lookup values defensively
-        driver1 = driver_mapping.get(d1_label, list(driver_mapping.values())[0])
-        driver2 = driver_mapping.get(d2_label, list(driver_mapping.values())[1] if len(driver_mapping) > 1 else list(driver_mapping.values())[0])
+        driver1 = driver_mapping.get(d1_label, unique_drivers[0])
+        driver2 = driver_mapping.get(d2_label, unique_drivers[1] if len(unique_drivers) > 1 else unique_drivers[0])
         driver3 = driver_mapping.get(d3_label, None) if d3_label != "None / Disabled" else None
 
         laps_d1 = session_data.laps.pick_driver(driver1)
@@ -180,13 +192,13 @@ else:
         fig.add_trace(gr.Scatter(x=target_grid, y=delta_time, name=f"Pacing Margin (Ref: {driver1})", line=dict(color="#FFFFFF", width=2)), row=2, col=1)
         
         fig.update_layout(
-            title_text=f"Velocity Profiles & Throttle Inputs Map — {selected_circuit} ({selected_year})",
+            title_text=f"📊 LAP PROFILE STREAM: {selected_circuit} ({selected_year})",
             height=750,
             template="plotly_dark",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
         
-        fig.update_xaxes(title_text="Absolute Coordinate Baseline (Meters)", row=2, col=1)
+        fig.update_xaxes(title_text="Absolute Track Coordinate Baseline (Meters)", row=2, col=1)
         fig.update_yaxes(title_text="Velocity (km/h)", row=1, col=1, secondary_y=False)
         fig.update_yaxes(title_text="Throttle Input %", maxallowed=100, minallowed=0, row=1, col=1, secondary_y=True)
         fig.update_yaxes(title_text="Delta Time Performance Gap", row=2, col=1)
@@ -194,14 +206,36 @@ else:
         st.plotly_chart(fig, use_container_width=True)
         
         # ==============================================================================
-        # USER GUIDE SECTION
+        # SIMPLIFIED, PROFESSIONAL EXECUTIVE GUIDE SECTION
         # ==============================================================================
         st.markdown("---")
-        st.markdown("### Structural Analysis Guide")
-        st.write("The secondary chart tracks the absolute performance margins down to the meter. An ascending delta trace demonstrates that the baseline driver is opening a performance gap, while a descending trend indicates the Comparison Driver is gaining time.")
-
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### 📖 Quick-Start User Manual")
+            st.markdown(
+                """
+                1. **Select Context:** Set the desired **Season Year**, **Circuit**, and **Session Type** in the left panel.
+                2. **Choose Drivers:** Map driver profiles to isolate matchups. The **Primary Driver** acts as your flat statistical `0.00` baseline.
+                3. **Analyze:** * Click and drag to zoom into specific corner sectors.
+                   * Double-click anywhere on the canvas to reset your layout view.
+                """
+            )
+            
+        with col2:
+            st.markdown("### 🛠️ Core Engineering & Mathematics Documentation")
+            st.markdown(
+                """
+                * **1D Linear Array Interpolation (`numpy.interp`):** Standardizes asynchronous telemetry data intervals onto an absolute uniform grid measured down to every **10 meters** to allow clear data comparisons.
+                * **The Pacing Margin Trace (Row 2 Chart):**
+                  * **Trending Upwards (↗️):** Comparison Driver is **losing pace** relative to the baseline.
+                  * **Trending Downwards (↘️):** Comparison Driver is **gaining ground** on the baseline.
+                * **Throttle Curve Map:** The dashed line traces driver throttle profiles. Use this to identify who picks up throttle quicker on corner exits.
+                """
+            )
+            
     except Exception as e:
-        st.markdown("### STATUS: ONLINE")
-        st.markdown("## 🏁")
+        st.markdown("### 🔴 SYSTEM INTEGRITY WARNING")
+        st.markdown("## 🛑")
         st.error("### Operational Boundary Detected")
         st.write(f"Data mapping error: {str(e)}")
