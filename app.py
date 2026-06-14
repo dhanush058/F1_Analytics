@@ -8,7 +8,7 @@ import os
 import time
 
 # ==============================================================================
-# BACKEND COMPATIBILITY ROUTINES (Memory-First Storage Architecture)
+# HARDENED LIVE STORAGE ARCHITECTURE (Bypasses /tmp folder wipes)
 # ==============================================================================
 st.set_page_config(
     page_title="F1 Team Telemetry Hub",
@@ -16,15 +16,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Set up a temporary folder path, but prepare a backup memory stream if it fails
-tmp_cache_dir = "/tmp/fastf1_cache"
-try:
-    if not os.path.exists(tmp_cache_dir):
-        os.makedirs(tmp_cache_dir, exist_ok=True)
-    fastf1.Cache.enable_cache(tmp_cache_dir)
-except Exception:
-    # If Streamlit locks the directory folder, force direct streaming from memory channels
-    fastf1.Cache.offline_mode(enabled=False)
+# FORCE FastF1 to use Streamlit's permanent internal directory instead of /tmp
+persistent_cache_dir = os.path.expanduser("~/.fastf1_paddock_cache")
+if not os.path.exists(persistent_cache_dir):
+    os.makedirs(persistent_cache_dir, exist_ok=True)
+fastf1.Cache.enable_cache(persistent_cache_dir)
 
 @st.cache_data(ttl=86400)
 def fetch_season_circuits(year):
@@ -40,8 +36,7 @@ def load_telemetry_secure(year, grand_prix, session_type):
         session = fastf1.get_session(int(year), grand_prix, session_type)
         session.load(laps=True, telemetry=True, weather=False)
         
-        # MEMORY GUARD: If the server thread reads too fast for the cloud disk,
-        # pause momentarily to let the background arrays unpack completely.
+        # MEMORY GUARD: Prevent race conditions by giving cloud threads time to unpack data structures cleanly
         retry_count = 0
         while (not hasattr(session, 'laps') or session.laps is None or len(session.laps) == 0) and retry_count < 5:
             time.sleep(0.5)
@@ -72,7 +67,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.title("🏁 MULTI-DRIVER TELEMETRY PLATFORM")
+st.title("官方 F1 MULTI-DRIVER TELEMETRY PLATFORM")
 st.write("🛰️ **Spatial Coordinate Resampling Pipeline** | Real-Time Telemetry Analytics Layer")
 st.caption("⚙️ Pit Wall Diagnostics Engine v2.6")
 
@@ -100,7 +95,7 @@ if session_data is None or not hasattr(session_data, 'laps') or session_data.lap
     st.error("### Operational Boundary Detected")
     st.warning("The telemetry stream logs for this session are missing or completely uncompiled on the server database. Please switch the Year dropdown selection to 2024 or choose another Grand Prix location.")
 else:
-    # --- FIXED ROSTER DISCOVERY PASS ---
+    # --- DYNAMIC ROSTER DISCOVERY PASS ---
     try:
         unique_drivers = sorted(session_data.laps['Driver'].dropna().unique().tolist())
         driver_options = [f"🏎️ {d}" for d in unique_drivers]
