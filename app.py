@@ -32,8 +32,16 @@ def fetch_season_circuits(year):
 def load_telemetry_secure(year, grand_prix, session_type):
     try:
         session = fastf1.get_session(int(year), grand_prix, session_type)
-        # Force full synchronous loading of both laps and channels before returning object
+        # Force full synchronous loading
         session.load(laps=True, telemetry=True, weather=False)
+        
+        # CORE BUGFIX: Verify FastF1 actually populated its internal array registers.
+        # If the cache returned a corrupt, empty frame, force an online reload override.
+        if not hasattr(session, 'laps') or session.laps is None or len(session.laps) == 0:
+            fastf1.Cache.offline_mode(enabled=False) # bypass local disk limits
+            session = fastf1.get_session(int(year), grand_prix, session_type)
+            session.load(laps=True, telemetry=True, weather=False)
+            
         return session
     except Exception as e:
         return None
@@ -55,7 +63,6 @@ st.caption("Telemetry Diagnostics Engine")
 # SIDEBAR CONTROL WORKSPACE (FORM PROTECTED)
 # ==============================================================================
 with st.sidebar:
-    # Encapsulate all configurations inside a form block to handle browser states cleanly
     with st.form(key="pipeline_configuration_form"):
         st.header("⚙️ Configuration Panel")
         selected_year = st.selectbox("Season Year", options=[2026, 2025, 2024], index=0)
@@ -68,7 +75,6 @@ with st.sidebar:
         st.markdown("---")
         st.subheader("Drivers Matrix Alignments")
         
-        # Hardcoded clean fallback names for the initial form setup pass to guarantee stability
         driver_options = [
             "Max Verstappen (VER)", "Lando Norris (NOR)", "Charles Leclerc (LEC)", 
             "Lewis Hamilton (HAM)", "Oscar Piastri (PIA)", "George Russell (RUS)",
@@ -84,7 +90,6 @@ with st.sidebar:
         st.markdown("---")
         enable_audio = st.toggle("Enable Workspace Ambiance (V8 Sound)", value=False)
         
-        # Form Submission Point
         submit_button = st.form_submit_button(label="⚡ Run Telemetry Analysis", type="primary")
 
     if enable_audio:
@@ -96,7 +101,7 @@ with st.sidebar:
             """, height=0, width=0
         )
 
-# Map human-readable labels to their standard 3-letter timing abbreviations
+# Map names to 3-letter timing abbreviations
 driver_mapping = {label: label.split("(")[-1].replace(")", "") for label in driver_options}
 driver1 = driver_mapping.get(d1_label, "VER")
 driver2 = driver_mapping.get(d2_label, "NOR")
@@ -116,9 +121,12 @@ if submit_button:
             st.warning("The telemetry stream logs for this session are missing or completely uncompiled on the server database. Please switch the Year dropdown selection to 2024 or choose another Grand Prix location.")
         else:
             try:
-                # Isolate specific telemetry vectors
+                # Isolate specific telemetry vectors safely checking if data actually loaded
                 laps_d1 = session_data.laps.pick_driver(driver1)
                 laps_d2 = session_data.laps.pick_driver(driver2)
+                
+                if len(laps_d1) == 0 or len(laps_d2) == 0:
+                    raise ValueError("No data found for selected drivers in this specific session checkpoint.")
                 
                 fastest_d1 = laps_d1.pick_fastest()
                 fastest_d2 = laps_d2.pick_fastest()
@@ -137,10 +145,11 @@ if submit_button:
                 if driver3:
                     try:
                         laps_d3 = session_data.laps.pick_driver(driver3)
-                        fastest_d3 = laps_d3.pick_fastest()
-                        telemetry_d3 = fastest_d3.get_telemetry().add_distance()
-                        grid_d3 = resample_telemetry_grid(telemetry_d3, target_grid)
-                        include_d3 = True
+                        if len(laps_d3) > 0:
+                            fastest_d3 = laps_d3.pick_fastest()
+                            telemetry_d3 = fastest_d3.get_telemetry().add_distance()
+                            grid_d3 = resample_telemetry_grid(telemetry_d3, target_grid)
+                            include_d3 = True
                     except:
                         pass
                 
