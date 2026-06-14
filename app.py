@@ -74,10 +74,8 @@ if session_data is None:
     st.warning("The telemetry stream logs for this session are missing or completely uncompiled on the server database. Please switch the Year dropdown selection to 2024 or choose another Grand Prix location.")
 else:
     # --- DYNAMIC ROSTER DISCOVERY PASS ---
-    # Extracts the full driver name registry directly from the session results database
     try:
         results_df = session_data.results
-        # Build dictionary: {"Max Verstappen (VER)": "VER", ...}
         driver_mapping = {}
         for _, row in results_df.iterrows():
             display_label = f"{row['FullName']} ({row['Abbreviation']})"
@@ -85,21 +83,22 @@ else:
         
         driver_options = sorted(list(driver_mapping.keys()))
     except:
-        # Emergency fallback if results metadata dictionary is delayed
         driver_mapping = {"Max Verstappen (VER)": "VER", "Lando Norris (NOR)": "NOR", "Lewis Hamilton (HAM)": "HAM"}
         driver_options = list(driver_mapping.keys())
 
-    # Render driver dropdowns inside the sidebar workspace using full names list
+    # SAFE UI ASSIGNMENT: Render dropdowns and process inside a localized execution guard
     with st.sidebar:
         st.markdown("---")
         st.subheader("Drivers Matrix Alignments")
         
-        d1_label = st.selectbox("Primary Driver (Baseline)", options=driver_options, index=0 if len(driver_options) > 0 else 0)
-        d2_label = st.selectbox("Comparison Driver", options=driver_options, index=1 if len(driver_options) > 1 else 0)
+        # We add a unique key tied to the circuit so Streamlit completely forces a clean component rerender when the track changes
+        ui_key = f"drivers_{selected_year}_{selected_circuit.replace(' ', '_')}"
         
-        # Insert a clean option for dropping driver 3 completely from the layout pass
+        d1_label = st.selectbox("Primary Driver (Baseline)", options=driver_options, index=0, key=f"{ui_key}_d1")
+        d2_label = st.selectbox("Comparison Driver", options=driver_options, index=1 if len(driver_options) > 1 else 0, key=f"{ui_key}_d2")
+        
         d3_options = ["None / Disabled"] + driver_options
-        d3_label = st.selectbox("Optional Comparison Driver 3", options=d3_options, index=0)
+        d3_label = st.selectbox("Optional Comparison Driver 3", options=d3_options, index=0, key=f"{ui_key}_d3")
 
         st.markdown("---")
         enable_audio = st.toggle("Enable Workspace Ambiance (V8 Sound)", value=False)
@@ -112,12 +111,13 @@ else:
                 """, height=0, width=0
             )
 
-    # Extract target 3-letter abbreviations passing parameters down onto core engines
-    driver1 = driver_mapping[d1_label]
-    driver2 = driver_mapping[d2_label]
-    driver3 = driver_mapping[d3_label] if d3_label != "None / Disabled" else None
-
     try:
+        # Secure the mapping fallback lookup values defensively
+        driver1 = driver_mapping.get(d1_label, driver_options[0] if driver_options else "VER")
+        driver1 = driver_mapping.get(d1_label, list(driver_mapping.values())[0])
+        driver2 = driver_mapping.get(d2_label, list(driver_mapping.values())[1] if len(driver_mapping) > 1 else list(driver_mapping.values())[0])
+        driver3 = driver_mapping.get(d3_label, None) if d3_label != "None / Disabled" else None
+
         laps_d1 = session_data.laps.pick_driver(driver1)
         laps_d2 = session_data.laps.pick_driver(driver2)
         
