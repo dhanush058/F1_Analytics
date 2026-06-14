@@ -7,7 +7,7 @@ from plotly.subplots import make_subplots
 import os
 
 # ==============================================================================
-# BACKEND STORAGE FIXED ROUTINES (Hidden Environment Compatibility)
+# BACKEND COMPATIBILITY ROUTINES (Hidden Scratchpad Setup)
 # ==============================================================================
 st.set_page_config(
     page_title="Multi-Driver F1 Telemetry Analytics",
@@ -44,10 +44,10 @@ def resample_telemetry_grid(telemetry_df, target_distance):
     return resampled
 
 # ==============================================================================
-# ORIGINAL UI HEADER LAYOUT (RESTORED)
+# ORIGINAL UI HEADER LAYOUT
 # ==============================================================================
 st.title("MULTI-DRIVER TELEMETRY PLATFORM")
-st.write(f"Spatial Coordinate Resampling Pipeline")
+st.write("Spatial Coordinate Resampling Pipeline")
 st.caption("Telemetry Diagnostics Engine")
 
 # ==============================================================================
@@ -62,38 +62,64 @@ with st.sidebar:
     
     selected_session = st.selectbox("Session Type", options=["Qualifying", "Race", "Practice 1", "Practice 2", "Practice 3"])
 
-    st.markdown("---")
-    st.subheader("Drivers")
-    driver1_input = st.text_input("Primary Driver", value="VER").upper()
-    driver2_input = st.text_input("Comparison Driver", value="NOR").upper()
-    driver3_input = st.text_input("Optional Comparison (Leave blank to disable)", value="").upper()
-
-    st.markdown("---")
-    enable_audio = st.toggle("Enable Workspace Ambiance (V8 Sound)", value=False)
-    if enable_audio:
-        st.components.v1.html(
-            """
-            <audio autoplay loop style="display:none;">
-                <source src="https://www.soundjay.com/transportation/sounds/race-car-driving-1.mp3" type="audio/mpeg">
-            </audio>
-            """, height=0, width=0
-        )
-
 # ==============================================================================
 # RUNTIME PERFORMANCE INTERACTION LOGIC
 # ==============================================================================
 session_data = load_telemetry_secure(selected_year, selected_circuit, selected_session)
 
 if session_data is None:
-    # ORIGINAL DEFENSIVE NOTICE LAYOUT (RESTORED)
     st.markdown("### STATUS: ONLINE")
     st.markdown("## 🏁")
     st.error("### Operational Boundary Detected")
     st.warning("The telemetry stream logs for this session are missing or completely uncompiled on the server database. Please switch the Year dropdown selection to 2024 or choose another Grand Prix location.")
 else:
+    # --- DYNAMIC ROSTER DISCOVERY PASS ---
+    # Extracts the full driver name registry directly from the session results database
     try:
-        laps_d1 = session_data.laps.pick_driver(driver1_input)
-        laps_d2 = session_data.laps.pick_driver(driver2_input)
+        results_df = session_data.results
+        # Build dictionary: {"Max Verstappen (VER)": "VER", ...}
+        driver_mapping = {}
+        for _, row in results_df.iterrows():
+            display_label = f"{row['FullName']} ({row['Abbreviation']})"
+            driver_mapping[display_label] = row['Abbreviation']
+        
+        driver_options = sorted(list(driver_mapping.keys()))
+    except:
+        # Emergency fallback if results metadata dictionary is delayed
+        driver_mapping = {"Max Verstappen (VER)": "VER", "Lando Norris (NOR)": "NOR", "Lewis Hamilton (HAM)": "HAM"}
+        driver_options = list(driver_mapping.keys())
+
+    # Render driver dropdowns inside the sidebar workspace using full names list
+    with st.sidebar:
+        st.markdown("---")
+        st.subheader("Drivers Matrix Alignments")
+        
+        d1_label = st.selectbox("Primary Driver (Baseline)", options=driver_options, index=0 if len(driver_options) > 0 else 0)
+        d2_label = st.selectbox("Comparison Driver", options=driver_options, index=1 if len(driver_options) > 1 else 0)
+        
+        # Insert a clean option for dropping driver 3 completely from the layout pass
+        d3_options = ["None / Disabled"] + driver_options
+        d3_label = st.selectbox("Optional Comparison Driver 3", options=d3_options, index=0)
+
+        st.markdown("---")
+        enable_audio = st.toggle("Enable Workspace Ambiance (V8 Sound)", value=False)
+        if enable_audio:
+            st.components.v1.html(
+                """
+                <audio autoplay loop style="display:none;">
+                    <source src="https://www.soundjay.com/transportation/sounds/race-car-driving-1.mp3" type="audio/mpeg">
+                </audio>
+                """, height=0, width=0
+            )
+
+    # Extract target 3-letter abbreviations passing parameters down onto core engines
+    driver1 = driver_mapping[d1_label]
+    driver2 = driver_mapping[d2_label]
+    driver3 = driver_mapping[d3_label] if d3_label != "None / Disabled" else None
+
+    try:
+        laps_d1 = session_data.laps.pick_driver(driver1)
+        laps_d2 = session_data.laps.pick_driver(driver2)
         
         fastest_d1 = laps_d1.pick_fastest()
         fastest_d2 = laps_d2.pick_fastest()
@@ -108,9 +134,9 @@ else:
         grid_d2 = resample_telemetry_grid(telemetry_d2, target_grid)
         
         include_d3 = False
-        if driver3_input:
+        if driver3:
             try:
-                laps_d3 = session_data.laps.pick_driver(driver3_input)
+                laps_d3 = session_data.laps.pick_driver(driver3)
                 fastest_d3 = laps_d3.pick_fastest()
                 telemetry_d3 = fastest_d3.get_telemetry().add_distance()
                 grid_d3 = resample_telemetry_grid(telemetry_d3, target_grid)
@@ -124,7 +150,9 @@ else:
             v2 = max(grid_d2['Speed'].iloc[i] / 3.6, 1.0)
             delta_time[i] = delta_time[i-1] + ((10.0 / v1) - (10.0 / v2))
         
-        # ORIGINAL BI-TIER PLOTLY INTERACTIVE ENVIRONMENT
+        # ==============================================================================
+        # PLOTLY INTERACTIVE BI-TIER WORKSPACE RENDER
+        # ==============================================================================
         fig = make_subplots(
             rows=2, cols=1, 
             shared_xaxes=True, 
@@ -133,16 +161,16 @@ else:
             specs=[[{"secondary_y": True}], [{"secondary_y": False}]]
         )
         
-        fig.add_trace(gr.Scatter(x=target_grid, y=grid_d1['Speed'], name=f"{driver1_input} Velocity", line=dict(color="#00D2BE", width=2.5)), row=1, col=1, secondary_y=False)
-        fig.add_trace(gr.Scatter(x=target_grid, y=grid_d1['Throttle'], name=f"{driver1_input} Throttle %", line=dict(color="#00D2BE", width=1.5, dash='dash'), opacity=0.3), row=1, col=1, secondary_y=True)
+        fig.add_trace(gr.Scatter(x=target_grid, y=grid_d1['Speed'], name=f"{driver1} Velocity", line=dict(color="#00D2BE", width=2.5)), row=1, col=1, secondary_y=False)
+        fig.add_trace(gr.Scatter(x=target_grid, y=grid_d1['Throttle'], name=f"{driver1} Throttle %", line=dict(color="#00D2BE", width=1.5, dash='dash'), opacity=0.3), row=1, col=1, secondary_y=True)
         
-        fig.add_trace(gr.Scatter(x=target_grid, y=grid_d2['Speed'], name=f"{driver2_input} Velocity", line=dict(color="#FF8700", width=2.5)), row=1, col=1, secondary_y=False)
-        fig.add_trace(gr.Scatter(x=target_grid, y=grid_d2['Throttle'], name=f"{driver2_input} Throttle %", line=dict(color="#FF8700", width=1.5, dash='dash'), opacity=0.3), row=1, col=1, secondary_y=True)
+        fig.add_trace(gr.Scatter(x=target_grid, y=grid_d2['Speed'], name=f"{driver2} Velocity", line=dict(color="#FF8700", width=2.5)), row=1, col=1, secondary_y=False)
+        fig.add_trace(gr.Scatter(x=target_grid, y=grid_d2['Throttle'], name=f"{driver2} Throttle %", line=dict(color="#FF8700", width=1.5, dash='dash'), opacity=0.3), row=1, col=1, secondary_y=True)
         
         if include_d3:
-            fig.add_trace(gr.Scatter(x=target_grid, y=grid_d3['Speed'], name=f"{driver3_input} Velocity", line=dict(color="#E10600", width=2.5)), row=1, col=1, secondary_y=False)
+            fig.add_trace(gr.Scatter(x=target_grid, y=grid_d3['Speed'], name=f"{driver3} Velocity", line=dict(color="#E10600", width=2.5)), row=1, col=1, secondary_y=False)
         
-        fig.add_trace(gr.Scatter(x=target_grid, y=delta_time, name=f"Pacing Margin (Ref: {driver1_input})", line=dict(color="#FFFFFF", width=2)), row=2, col=1)
+        fig.add_trace(gr.Scatter(x=target_grid, y=delta_time, name=f"Pacing Margin (Ref: {driver1})", line=dict(color="#FFFFFF", width=2)), row=2, col=1)
         
         fig.update_layout(
             title_text=f"Velocity Profiles & Throttle Inputs Map — {selected_circuit} ({selected_year})",
@@ -158,12 +186,14 @@ else:
         
         st.plotly_chart(fig, use_container_width=True)
         
+        # ==============================================================================
+        # RESTORED ORIGINAL USER GUIDE SECTION
+        # ==============================================================================
         st.markdown("---")
         st.markdown("### Structural Analysis Guide")
         st.write("The secondary chart tracks the absolute performance margins down to the meter. An ascending delta trace demonstrates that the baseline driver is opening a performance gap, while a descending trend indicates the Comparison Driver is gaining time.")
 
     except Exception as e:
-        # Fallback to the original status look even if processing errors happen
         st.markdown("### STATUS: ONLINE")
         st.markdown("## 🏁")
         st.error("### Operational Boundary Detected")
