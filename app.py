@@ -8,7 +8,7 @@ import os
 import time
 
 # ==============================================================================
-# GLOBAL RUNTIME INITIALIZATION & FIREWALL BYPASS LAYER
+# GLOBAL RUNTIME INITIALIZATION & NETWORK FIX
 # ==============================================================================
 st.set_page_config(
     page_title="F1 Team Telemetry Hub",
@@ -16,48 +16,38 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CRITICAL FIX: Route requests to the open-source Jolpica network relay mirror.
-# This bypasses the blocked data center IP firewalls entirely.
+# CRITICAL FIX: Switches the broken Ergast server link to the stable Jolpica mirror.
+# This makes your original code start downloading live data successfully again.
 fastf1.ergast.interface.BASE_URL = "https://api.jolpi.ca/ergast/f1"
 
-# Set up a clean storage path tree inside your app partition workspace folder
-persistent_cache_dir = os.path.join(os.getcwd(), "f1_paddock_cache_vault")
-if not os.path.exists(persistent_cache_dir):
-    os.makedirs(persistent_cache_dir, exist_ok=True)
+# Sets up your original live temporary cache folder
+tmp_cache_dir = os.path.join(os.getcwd(), "f1_paddock_cache_vault")
+if not os.path.exists(tmp_cache_dir):
+    os.makedirs(tmp_cache_dir, exist_ok=True)
+fastf1.Cache.enable_cache(tmp_cache_dir)
 
-try:
-    fastf1.Cache.enable_cache(persistent_cache_dir)
-except Exception:
-    fastf1.Cache.enable_cache("/tmp")
-
-# ==============================================================================
-# RESILIENT LIVE DATA FETCHING ENGINE 
-# ==============================================================================
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=86400)
 def fetch_season_circuits(year):
-    for attempt in range(3):
-        try:
-            schedule = fastf1.get_event_schedule(int(year))
-            events = schedule[schedule['EventFormat'] != 'testing']
-            return sorted(events['EventName'].unique().tolist())
-        except Exception:
-            time.sleep(1.0)
-            continue
-    return ["Bahrain Grand Prix", "Saudi Arabian Grand Prix", "Australian Grand Prix", "Monaco Grand Prix", "Spanish Grand Prix", "Belgian Grand Prix", "Italian Grand Prix"]
+    try:
+        schedule = fastf1.get_event_schedule(int(year))
+        events = schedule[schedule['EventFormat'] != 'testing']
+        return sorted(events['EventName'].unique().tolist())
+    except:
+        return ["Bahrain Grand Prix", "Saudi Arabian Grand Prix", "Australian Grand Prix", "Spanish Grand Prix", "Belgian Grand Prix"]
 
 def load_telemetry_secure(year, grand_prix, session_type):
-    for attempt in range(3):
-        try:
-            session = fastf1.get_session(int(year), grand_prix, session_type)
-            session.load(laps=True, telemetry=True, weather=False)
+    try:
+        session = fastf1.get_session(int(year), grand_prix, session_type)
+        session.load(laps=True, telemetry=True, weather=False)
+        
+        retry_count = 0
+        while (not hasattr(session, 'laps') or session.laps is None or len(session.laps) == 0) and retry_count < 5:
+            time.sleep(0.5)
+            retry_count += 1
             
-            if hasattr(session, 'laps') and session.laps is not None and len(session.laps) > 0:
-                return session
-        except Exception:
-            fastf1.Cache.clear_cache(persistent_cache_dir)
-            time.sleep(1.5)
-            continue
-    return None
+        return session
+    except:
+        return None
 
 def resample_telemetry_grid(telemetry_df, target_distance):
     resampled = pd.DataFrame({'Distance': target_distance})
@@ -81,7 +71,7 @@ st.markdown(
 )
 
 st.title("官方 F1 MULTI-DRIVER TELEMETRY PLATFORM")
-st.write("🛰️ **Spatial Coordinate Resampling Pipeline** | Real-Time Live Telemetry Engine")
+st.write("🛰️ **Spatial Coordinate Resampling Pipeline** | Real-Time Telemetry Analytics Layer")
 st.caption("⚙️ Pit Wall Diagnostics Engine v2.6")
 
 # ==============================================================================
@@ -90,23 +80,23 @@ st.caption("⚙️ Pit Wall Diagnostics Engine v2.6")
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/f/f2/Formula2_logo.svg", width=80, output_format="PNG")
     st.header("🔧 Telemetry Control Unit")
-    
     selected_year = st.selectbox("Season Year", options=[2026, 2025, 2024], index=0)
+    
     available_circuits = fetch_season_circuits(selected_year)
     selected_circuit = st.selectbox("Location / Circuit", options=available_circuits)
+    
     selected_session = st.selectbox("Session Type", options=["Qualifying", "Race", "Practice 1", "Practice 2", "Practice 3"])
 
 # ==============================================================================
 # RUNTIME PERFORMANCE INTERACTION LOGIC
 # ==============================================================================
-with st.spinner("🛰️ Establishing Live Feed to F1 Timing Servers... Please wait."):
-    session_data = load_telemetry_secure(selected_year, selected_circuit, selected_session)
+session_data = load_telemetry_secure(selected_year, selected_circuit, selected_session)
 
-if session_data is None:
+if session_data is None or not hasattr(session_data, 'laps') or session_data.laps is None or len(session_data.laps) == 0:
     st.markdown("### 🔴 PIT WALL TELEMETRY STATUS: OFFLINE")
     st.markdown("## 🛑")
     st.error("### Operational Boundary Detected")
-    st.warning("The live F1 timing database is currently throttling connection requests from this server network. Please wait 10 seconds and refresh the browser tab, or select an older historical session (e.g., 2024 Belgian Grand Prix).")
+    st.warning("The telemetry stream logs for this session are missing or completely uncompiled on the server database. Please switch the Year dropdown selection to 2024 or choose another Grand Prix location.")
 else:
     try:
         unique_drivers = sorted(session_data.laps['Driver'].dropna().unique().tolist())
@@ -200,7 +190,8 @@ else:
         
         fig.update_layout(
             title_text=f"📊 LAP PROFILE STREAM: {selected_circuit} ({selected_year})",
-            height=750, template="plotly_dark",
+            height=750,
+            template="plotly_dark",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
         
@@ -216,10 +207,29 @@ else:
         # ==============================================================================
         st.markdown("---")
         col1, col2 = st.columns(2)
+        
         with col1:
-            st.markdown("### 📖 Quick-Start User Manual\n1. Select Context via Year and Circuit dropdowns.\n2. Primary Driver acts as your flat `0.00` tracking baseline.")
+            st.markdown("### 📖 Quick-Start User Manual")
+            st.markdown(
+                """
+                1. **Select Context:** Set the desired **Season Year**, **Circuit**, and **Session Type** in the left panel.
+                2. **Choose Drivers:** Map driver profiles to isolate matchups. The **Primary Driver** acts as your flat statistical `0.00` baseline.
+                3. **Analyze:** * Click and drag to zoom into specific corner sectors.
+                   * Double-click anywhere on the canvas to reset your layout view.
+                """
+            )
+            
         with col2:
-            st.markdown("### 🛠️ Core Engineering & Mathematics Documentation\n* **1D Linear Array Interpolation (`numpy.interp`):** Standardizes telemetry sensor offsets into static 10-meter lines.")
+            st.markdown("### 🛠️ Core Engineering & Mathematics Documentation")
+            st.markdown(
+                """
+                * **1D Linear Array Interpolation (`numpy.interp`):** Standardizes asynchronous telemetry data intervals onto an absolute uniform grid measured down to every **10 meters** to allow clear data comparisons.
+                * **The Pacing Margin Trace (Row 2 Chart):**
+                  * **Trending Upwards (↗️):** Comparison Driver is **losing pace** relative to the baseline.
+                  * **Trending Downwards (↘️):** Comparison Driver is **gaining ground** on the baseline.
+                * **Throttle Curve Map:** The dashed line traces driver throttle profiles. Use this to identify who picks up throttle quicker on corner exits.
+                """
+            )
             
     except Exception as e:
         st.markdown("### 🔴 SYSTEM INTEGRITY WARNING")
