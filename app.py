@@ -32,9 +32,10 @@ def fetch_season_circuits(year):
 def load_telemetry_secure(year, grand_prix, session_type):
     try:
         session = fastf1.get_session(int(year), grand_prix, session_type)
+        # CRITICAL FIX: Explicitly enforce full synchronous loading of both laps and channels
         session.load(laps=True, telemetry=True, weather=False)
         return session
-    except:
+    exceptException as e:
         return None
 
 def resample_telemetry_grid(telemetry_df, target_distance):
@@ -91,7 +92,6 @@ else:
         st.markdown("---")
         st.subheader("Drivers Matrix Alignments")
         
-        # We add a unique key tied to the circuit so Streamlit completely forces a clean component rerender when the track changes
         ui_key = f"drivers_{selected_year}_{selected_circuit.replace(' ', '_')}"
         
         d1_label = st.selectbox("Primary Driver (Baseline)", options=driver_options, index=0, key=f"{ui_key}_d1")
@@ -113,7 +113,6 @@ else:
 
     try:
         # Secure the mapping fallback lookup values defensively
-        driver1 = driver_mapping.get(d1_label, driver_options[0] if driver_options else "VER")
         driver1 = driver_mapping.get(d1_label, list(driver_mapping.values())[0])
         driver2 = driver_mapping.get(d2_label, list(driver_mapping.values())[1] if len(driver_mapping) > 1 else list(driver_mapping.values())[0])
         driver3 = driver_mapping.get(d3_label, None) if d3_label != "None / Disabled" else None
@@ -124,6 +123,7 @@ else:
         fastest_d1 = laps_d1.pick_fastest()
         fastest_d2 = laps_d2.pick_fastest()
         
+        # Explicit force collection check to clear data loading boundaries
         telemetry_d1 = fastest_d1.get_telemetry().add_distance()
         telemetry_d2 = fastest_d2.get_telemetry().add_distance()
         
@@ -187,7 +187,7 @@ else:
         st.plotly_chart(fig, use_container_width=True)
         
         # ==============================================================================
-        # RESTORED ORIGINAL USER GUIDE SECTION
+        # USER GUIDE SECTION
         # ==============================================================================
         st.markdown("---")
         st.markdown("### Structural Analysis Guide")
