@@ -88,23 +88,21 @@ with st.sidebar:
 # ==============================================================================
 session_data = load_telemetry_secure(selected_year, selected_circuit, selected_session)
 
-if session_data is None or not hasattr(session_data, 'laps') or session_data.laps is None:
+if session_data is None or not hasattr(session_data, 'laps') or session_data.laps is None or len(session_data.laps) == 0:
     st.markdown("### 🔴 PIT WALL TELEMETRY STATUS: OFFLINE")
     st.markdown("## 🛑")
     st.error("### Operational Boundary Detected")
     st.warning("The telemetry stream logs for this session are missing or completely uncompiled on the server database. Please switch the Year dropdown selection to 2024 or choose another Grand Prix location.")
 else:
+    # --- FIXED ROSTER DISCOVERY PASS ---
+    # We pull directly from the active laps grid to bypass empty results metadata bugs
     try:
-        results_df = session_data.results
-        driver_mapping = {}
-        for _, row in results_df.iterrows():
-            display_label = f"🏎️ {row['FullName']} ({row['Abbreviation']})"
-            driver_mapping[display_label] = row['Abbreviation']
-        
-        driver_options = sorted(list(driver_mapping.keys()))
+        unique_drivers = sorted(session_data.laps['Driver'].dropna().unique().tolist())
+        driver_options = [f"🏎️ {d}" for d in unique_drivers]
+        driver_mapping = {f"🏎️ {d}": d for d in unique_drivers}
     except:
-        driver_mapping = {"🏎️ Max Verstappen (VER)": "VER", "🏎️ Lando Norris (NOR)": "NOR", "🏎️ Lewis Hamilton (HAM)": "HAM"}
-        driver_options = list(driver_mapping.keys())
+        driver_options = ["🏎️ VER", "🏎️ NOR", "🏎️ HAM", "🏎️ LEC"]
+        driver_mapping = {"🏎️ VER": "VER", "🏎️ NOR": "NOR", "🏎️ HAM": "HAM", "🏎️ LEC": "LEC"}
 
     with st.sidebar:
         st.markdown("---")
@@ -130,8 +128,8 @@ else:
             )
 
     try:
-        driver1 = driver_mapping.get(d1_label, list(driver_mapping.values())[0])
-        driver2 = driver_mapping.get(d2_label, list(driver_mapping.values())[1] if len(driver_mapping) > 1 else list(driver_mapping.values())[0])
+        driver1 = driver_mapping.get(d1_label, unique_drivers[0])
+        driver2 = driver_mapping.get(d2_label, unique_drivers[1] if len(unique_drivers) > 1 else unique_drivers[0])
         driver3 = driver_mapping.get(d3_label, None) if d3_label != "None / Disabled" else None
 
         laps_d1 = session_data.laps.pick_driver(driver1)
@@ -206,7 +204,6 @@ else:
         # SIMPLIFIED, PROFESSIONAL EXECUTIVE GUIDE SECTION
         # ==============================================================================
         st.markdown("---")
-        
         col1, col2 = st.columns(2)
         
         with col1:
