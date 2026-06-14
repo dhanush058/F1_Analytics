@@ -35,8 +35,7 @@ def load_telemetry_secure(year, grand_prix, session_type):
         session = fastf1.get_session(int(year), grand_prix, session_type)
         session.load(laps=True, telemetry=True, weather=False)
         
-        # MEMORY GUARD: If the server thread is running too fast for the cloud disk,
-        # pause momentarily to let the background arrays unpack completely.
+        # MEMORY GUARD: Prevent race conditions by giving cloud threads time to unpack data structures cleanly
         retry_count = 0
         while (not hasattr(session, 'laps') or session.laps is None) and retry_count < 5:
             time.sleep(0.5)
@@ -95,7 +94,7 @@ else:
         driver_mapping = {"Max Verstappen (VER)": "VER", "Lando Norris (NOR)": "NOR", "Lewis Hamilton (HAM)": "HAM"}
         driver_options = list(driver_mapping.keys())
 
-    # SAFE UI ASSIGNMENT: Render dropdowns and process inside a localized execution guard
+    # SAFE UI ASSIGNMENT: Render dropdowns with unique keys to isolate browser states
     with st.sidebar:
         st.markdown("---")
         st.subheader("Drivers Matrix Alignments")
@@ -120,7 +119,6 @@ else:
             )
 
     try:
-        # Secure the mapping lookup values defensively
         driver1 = driver_mapping.get(d1_label, list(driver_mapping.values())[0])
         driver2 = driver_mapping.get(d2_label, list(driver_mapping.values())[1] if len(driver_mapping) > 1 else list(driver_mapping.values())[0])
         driver3 = driver_mapping.get(d3_label, None) if d3_label != "None / Disabled" else None
@@ -194,12 +192,40 @@ else:
         st.plotly_chart(fig, use_container_width=True)
         
         # ==============================================================================
-        # USER GUIDE SECTION
+        # COMPREHENSIVE USER GUIDE & TECHNICAL DATA MANUAL
         # ==============================================================================
         st.markdown("---")
-        st.markdown("### Structural Analysis Guide")
-        st.write("The secondary chart tracks the absolute performance margins down to the meter. An ascending delta trace demonstrates that the baseline driver is opening a performance gap, while a descending trend indicates the Comparison Driver is gaining time.")
-
+        
+        # Layout documentation columns
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### 📖 Dashboard User Playbook")
+            st.markdown(
+                """
+                Welcome to the professional-tier Formula 1 diagnostic environment. Follow this playbook to unlock actionable performance analysis:
+                
+                * **Step 1: Scope Selection:** In the sidebar control panel, select the desired season year, circuit location, and event session profile (e.g., Qualifying or Race).
+                * **Step 2: Driver Matrix Target Mapping:** Choose your driver line-ups. The **Primary Driver** acts as your absolute `0.00` statistical baseline. The charts will calculate exactly where the **Comparison Drivers** gain or lose pace against this reference.
+                * **Step 3: Multi-Axis Zoom Exploration:** Click and drag a box across any sector of the Plotly charts to zoom in simultaneously on velocity profiles and vehicle inputs for specific corners. Double-click the chart to reset the viewport.
+                * **Step 4: Toggle Ambient Ambiance:** Use the audio toggle switch to activate a vintage V8 engine notes stream, optimizing the immersive portfolio experience.
+                """
+            )
+            
+        with col2:
+            st.markdown("### 🛠️ Advanced Analytical Deep-Dive")
+            st.markdown(
+                """
+                This application implements real-world race engineering methodologies to handle dirty time-series sensor data streams:
+                
+                * **The Spatial Coordinate Resampling Pipeline:** F1 telemetry data logs asynchronously (e.g., different car sensors fire at completely different intervals, creating mismatched sample arrays). This dashboard runs a 1D linear array interpolation (`numpy.interp`) to standardize all incoming data streams onto a uniform absolute distance track grid measured down to every **10 meters**.
+                * **Interpreting the Performance Gap Time Delta (Row 2):** The white trace calculates cumulative micro-delays between drivers. 
+                  * **Trending Upwards (↗️):** The comparison driver is actively *losing* time margin relative to your primary baseline driver.
+                  * **Trending Downwards (↘️):** The comparison driver is actively *gaining* ground and pulling ahead through that track sector.
+                * **Throttle Trace Overlay:** The dashed curves show exact foot-to-pedal behavior. Isolate who is braver on corner exits by verifying who punches back up to 100% full throttle first!
+                """
+            )
+            
     except Exception as e:
         st.markdown("### STATUS: ONLINE")
         st.markdown("## 🏁")
