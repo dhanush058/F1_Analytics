@@ -11,7 +11,7 @@ import time
 # BACKEND COMPATIBILITY ROUTINES (Hidden Scratchpad Setup)
 # ==============================================================================
 st.set_page_config(
-    page_title="Multi-Driver F1 Telemetry Analytics",
+    page_title="F1 Team Telemetry Hub",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -52,17 +52,31 @@ def resample_telemetry_grid(telemetry_df, target_distance):
     return resampled
 
 # ==============================================================================
-# ORIGINAL UI HEADER LAYOUT
+# FORMULA 1 HIGH-PERFORMANCE BRANDING THEME
 # ==============================================================================
-st.title("MULTI-DRIVER TELEMETRY PLATFORM")
-st.write("Spatial Coordinate Resampling Pipeline")
-st.caption("Telemetry Diagnostics Engine")
+# Custom CSS injector to style Streamlit components like a pit lane monitor
+st.markdown(
+    """
+    <style>
+    .reportview-container { background: #111217; }
+    h1 { color: #FF1801 !important; font-family: 'Titillium Web', sans-serif; font-weight: 900; letter-spacing: -1px; }
+    .stSelectbox label { color: #E1E1E6 !important; font-weight: bold; }
+    div[data-testid="stNotification"] { border-left: 5px solid #FF1801; background-color: #1F2026; }
+    </style>
+    """, 
+    unsafe_allow_html=True
+)
+
+st.title("🏁 MULTI-DRIVER TELEMETRY PLATFORM")
+st.write("🛰️ **Spatial Coordinate Resampling Pipeline** | Real-Time Telemetry Analytics Layer")
+st.caption("⚙️ Pit Wall Diagnostics Engine v2.6")
 
 # ==============================================================================
 # SIDEBAR CONTROL WORKSPACE
 # ==============================================================================
 with st.sidebar:
-    st.header("⚙️ Configuration Panel")
+    st.image("https://upload.wikimedia.org/wikipedia/commons/f/f2/Formula2_logo.svg", width=80, output_format="PNG") # Dynamic paddock branding accent
+    st.header("🔧 Telemetry Control Unit")
     selected_year = st.selectbox("Season Year", options=[2026, 2025, 2024], index=0)
     
     available_circuits = fetch_season_circuits(selected_year)
@@ -76,9 +90,9 @@ with st.sidebar:
 session_data = load_telemetry_secure(selected_year, selected_circuit, selected_session)
 
 if session_data is None or not hasattr(session_data, 'laps') or session_data.laps is None:
-    # ORIGINAL DEFENSIVE NOTICE LAYOUT
-    st.markdown("### STATUS: ONLINE")
-    st.markdown("## 🏁")
+    # TEAM PIT WALL DEFENSIVE NOTICE LAYOUT
+    st.markdown("### 🔴 PIT WALL TELEMETRY STATUS: OFFLINE")
+    st.markdown("## 🛑")
     st.error("### Operational Boundary Detected")
     st.warning("The telemetry stream logs for this session are missing or completely uncompiled on the server database. Please switch the Year dropdown selection to 2024 or choose another Grand Prix location.")
 else:
@@ -87,29 +101,29 @@ else:
         results_df = session_data.results
         driver_mapping = {}
         for _, row in results_df.iterrows():
-            display_label = f"{row['FullName']} ({row['Abbreviation']})"
+            display_label = f"🏎️ {row['FullName']} ({row['Abbreviation']})"
             driver_mapping[display_label] = row['Abbreviation']
         
         driver_options = sorted(list(driver_mapping.keys()))
     except:
-        driver_mapping = {"Max Verstappen (VER)": "VER", "Lando Norris (NOR)": "NOR", "Lewis Hamilton (HAM)": "HAM"}
+        driver_mapping = {"🏎️ Max Verstappen (VER)": "VER", "🏎️ Lando Norris (NOR)": "NOR", "🏎️ Lewis Hamilton (HAM)": "HAM"}
         driver_options = list(driver_mapping.keys())
 
     # SAFE UI ASSIGNMENT: Render dropdowns with unique keys to isolate browser states
     with st.sidebar:
         st.markdown("---")
-        st.subheader("Drivers Matrix Alignments")
+        st.subheader("📊 Driver Selections")
         
         ui_key = f"drivers_{selected_year}_{selected_circuit.replace(' ', '_')}"
         
         d1_label = st.selectbox("Primary Driver (Baseline)", options=driver_options, index=0, key=f"{ui_key}_d1")
-        d2_label = st.selectbox("Comparison Driver", options=driver_options, index=1 if len(driver_options) > 1 else 0, key=f"{ui_key}_d2")
+        d2_label = st.selectbox("Comparison Driver 2", options=driver_options, index=1 if len(driver_options) > 1 else 0, key=f"{ui_key}_d2")
         
         d3_options = ["None / Disabled"] + driver_options
         d3_label = st.selectbox("Optional Comparison Driver 3", options=d3_options, index=0, key=f"{ui_key}_d3")
 
         st.markdown("---")
-        enable_audio = st.toggle("Enable Workspace Ambiance (V8 Sound)", value=False)
+        enable_audio = st.toggle("🔊 Active Engine Telemetry Audio (V8)", value=False)
         if enable_audio:
             st.components.v1.html(
                 """
@@ -167,25 +181,29 @@ else:
             specs=[[{"secondary_y": True}], [{"secondary_y": False}]]
         )
         
+        # Primary Driver Traces (Electric Cyan Accent)
         fig.add_trace(gr.Scatter(x=target_grid, y=grid_d1['Speed'], name=f"{driver1} Velocity", line=dict(color="#00D2BE", width=2.5)), row=1, col=1, secondary_y=False)
         fig.add_trace(gr.Scatter(x=target_grid, y=grid_d1['Throttle'], name=f"{driver1} Throttle %", line=dict(color="#00D2BE", width=1.5, dash='dash'), opacity=0.3), row=1, col=1, secondary_y=True)
         
+        # Comparison Driver 2 Traces (Racing Papaya Orange Accent)
         fig.add_trace(gr.Scatter(x=target_grid, y=grid_d2['Speed'], name=f"{driver2} Velocity", line=dict(color="#FF8700", width=2.5)), row=1, col=1, secondary_y=False)
         fig.add_trace(gr.Scatter(x=target_grid, y=grid_d2['Throttle'], name=f"{driver2} Throttle %", line=dict(color="#FF8700", width=1.5, dash='dash'), opacity=0.3), row=1, col=1, secondary_y=True)
         
+        # Optional Driver 3 Trace (Maranello Crimson Accent)
         if include_d3:
             fig.add_trace(gr.Scatter(x=target_grid, y=grid_d3['Speed'], name=f"{driver3} Velocity", line=dict(color="#E10600", width=2.5)), row=1, col=1, secondary_y=False)
         
+        # Delta Time Performance Trace (Clean White Reference Line)
         fig.add_trace(gr.Scatter(x=target_grid, y=delta_time, name=f"Pacing Margin (Ref: {driver1})", line=dict(color="#FFFFFF", width=2)), row=2, col=1)
         
         fig.update_layout(
-            title_text=f"Velocity Profiles & Throttle Inputs Map — {selected_circuit} ({selected_year})",
+            title_text=f"📊 LAP PROFILE STREAM: {selected_circuit} ({selected_year})",
             height=750,
             template="plotly_dark",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
         
-        fig.update_xaxes(title_text="Absolute Coordinate Baseline (Meters)", row=2, col=1)
+        fig.update_xaxes(title_text="Absolute Track Coordinate Baseline (Meters)", row=2, col=1)
         fig.update_yaxes(title_text="Velocity (km/h)", row=1, col=1, secondary_y=False)
         fig.update_yaxes(title_text="Throttle Input %", maxallowed=100, minallowed=0, row=1, col=1, secondary_y=True)
         fig.update_yaxes(title_text="Delta Time Performance Gap", row=2, col=1)
@@ -227,7 +245,7 @@ else:
             )
             
     except Exception as e:
-        st.markdown("### STATUS: ONLINE")
-        st.markdown("## 🏁")
+        st.markdown("### 🔴 SYSTEM INTEGRITY WARNING")
+        st.markdown("## 🛑")
         st.error("### Operational Boundary Detected")
         st.write(f"Data mapping error: {str(e)}")
