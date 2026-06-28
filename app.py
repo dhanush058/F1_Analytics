@@ -31,14 +31,30 @@ DRIVER_MAP = {
     "Fernando Alonso": "ALO"
 }
 
+# Entire calendar mapped chronologically by date of completion to guarantee data stability
 AVAILABLE_RACES = {
-    "Australian Grand Prix (Melbourne)": {"year": 2023, "round": 3, "has_sprint": False},
-    "Miami Grand Prix (Miami)": {"year": 2023, "round": 5, "has_sprint": True},
-    "Monaco Grand Prix (Monte Carlo)": {"year": 2023, "round": 6, "has_sprint": False},
-    "Spanish Grand Prix (Barcelona)": {"year": 2023, "round": 7, "has_sprint": False},
-    "Canadian Grand Prix (Montreal)": {"year": 2023, "round": 8, "has_sprint": False},
-    "Austrian Grand Prix (Spielberg)": {"year": 2023, "round": 9, "has_sprint": True},
-    "British Grand Prix (Silverstone)": {"year": 2023, "round": 10, "has_sprint": False}
+    "01. Bahrain Grand Prix (Sakhir)": {"year": 2023, "round": 1, "has_sprint": False},
+    "02. Saudi Arabian Grand Prix (Jeddah)": {"year": 2023, "round": 2, "has_sprint": False},
+    "03. Australian Grand Prix (Melbourne)": {"year": 2023, "round": 3, "has_sprint": False},
+    "04. Azerbaijan Grand Prix (Baku)": {"year": 2023, "round": 4, "has_sprint": True},
+    "05. Miami Grand Prix (Miami)": {"year": 2023, "round": 5, "has_sprint": True},
+    "06. Monaco Grand Prix (Monte Carlo)": {"year": 2023, "round": 6, "has_sprint": False},
+    "07. Spanish Grand Prix (Barcelona)": {"year": 2023, "round": 7, "has_sprint": False},
+    "08. Canadian Grand Prix (Montreal)": {"year": 2023, "round": 8, "has_sprint": False},
+    "09. Austrian Grand Prix (Spielberg)": {"year": 2023, "round": 9, "has_sprint": True},
+    "10. British Grand Prix (Silverstone)": {"year": 2023, "round": 10, "has_sprint": False},
+    "11. Hungarian Grand Prix (Budapest)": {"year": 2023, "round": 11, "has_sprint": False},
+    "12. Belgian Grand Prix (Spa-Francorchamps)": {"year": 2023, "round": 12, "has_sprint": True},
+    "13. Dutch Grand Prix (Zandvoort)": {"year": 2023, "round": 13, "has_sprint": False},
+    "14. Italian Grand Prix (Monza)": {"year": 2023, "round": 14, "has_sprint": False},
+    "15. Singapore Grand Prix (Marina Bay)": {"year": 2023, "round": 15, "has_sprint": False},
+    "16. Japanese Grand Prix (Suzuka)": {"year": 2023, "round": 16, "has_sprint": False},
+    "17. Qatar Grand Prix (Lusail)": {"year": 2023, "round": 17, "has_sprint": True},
+    "18. United States Grand Prix (Austin)": {"year": 2023, "round": 18, "has_sprint": True},
+    "19. Mexico City Grand Prix (Mexico City)": {"year": 2023, "round": 19, "has_sprint": False},
+    "20. São Paulo Grand Prix (Interlagos)": {"year": 2023, "round": 20, "has_sprint": True},
+    "21. Las Vegas Grand Prix (Las Vegas)": {"year": 2023, "round": 21, "has_sprint": False},
+    "22. Abu Dhabi Grand Prix (Yas Marina)": {"year": 2023, "round": 22, "has_sprint": False}
 }
 
 SESSION_MAP = {
@@ -134,7 +150,7 @@ driver_code_2 = DRIVER_MAP[selected_driver_name_2]
 data = get_cached_telemetry(selected_race, selected_session_code, driver_code_1, driver_code_2)
 
 # -----------------------------------------------------------------------------
-# GRAPH RENDERING LAYER (PLOTS UP FIRST)
+# GRAPH RENDERING LAYER (PLOTS FIRST)
 # -----------------------------------------------------------------------------
 if data is not None:
     fig_inputs = pd_plot.Figure()
