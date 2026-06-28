@@ -13,25 +13,18 @@ CACHE_DIR = os.path.join(os.getcwd(), "fastf1_raw_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 f1_api.Cache.enable_cache(CACHE_DIR)
 
-DRIVER_MAP = {
-    "Max Verstappen": "VER",
-    "Lewis Hamilton": "HAM",
-    "Charles Leclerc": "LEC",
-    "Lando Norris": "NOR",
-    "Oscar Piastri": "PIA",
-    "George Russell": "RUS",
-    "Carlos Sainz": "SAI",
-    "Alex Albon": "ALB",
-    "Pierre Gasly": "GAS",
-    "Esteban Ocon": "OCO",
-    "Sergio Perez": "PER",
-    "Valtteri Bottas": "BOT",
-    "Nico Hulkenberg": "HUL",
-    "Lance Stroll": "STR",
-    "Fernando Alonso": "ALO"
+# Comprehensive Master Driver Database
+MASTER_DRIVER_MAP = {
+    "VER": "Max Verstappen", "HAM": "Lewis Hamilton", "LEC": "Charles Leclerc",
+    "NOR": "Lando Norris", "PIA": "Oscar Piastri", "RUS": "George Russell",
+    "SAI": "Carlos Sainz", "ALB": "Alex Albon", "GAS": "Pierre Gasly",
+    "OCO": "Esteban Ocon", "PER": "Sergio Perez", "BOT": "Valtteri Bottas",
+    "HUL": "Nico Hulkenberg", "STR": "Lance Stroll", "ALO": "Fernando Alonso",
+    "MAG": "Kevin Magnussen", "TSU": "Yuki Tsunoda", "RIC": "Daniel Ricciardo",
+    "SAR": "Logan Sargeant", "ZHO": "Zhou Guanyu", "DEV": "Nyck de Vries",
+    "LAW": "Liam Lawson", "BEA": "Oliver Bearman", "COL": "Franco Colapinto"
 }
 
-# Entire calendar mapped chronologically by date of completion to guarantee data stability
 AVAILABLE_RACES = {
     "01. Bahrain Grand Prix (Sakhir)": {"year": 2023, "round": 1, "has_sprint": False},
     "02. Saudi Arabian Grand Prix (Jeddah)": {"year": 2023, "round": 2, "has_sprint": False},
@@ -68,22 +61,66 @@ SESSION_MAP = {
 }
 
 # -----------------------------------------------------------------------------
-# CORE PIPELINE ENGINE
+# FAULT-TOLERANT SESSION LOADER & DYNAMIC FILTERING
 # -----------------------------------------------------------------------------
-def process_race_telemetry(race_name, session_code, driver_a_code, driver_b_code):
+@pd_stream.cache_resource
+def load_base_session(race_name, session_code):
+    """Loads the core session structure to discover active participants dynamically."""
     race_config = AVAILABLE_RACES[race_name]
-    
     session = f1_api.get_session(race_config["year"], race_config["round"], session_code)
-    session.load(telemetry=True, laps=True, weather=False)
-    
-    laps_a = session.laps.pick_driver(driver_a_code)
-    laps_b = session.laps.pick_driver(driver_b_code)
-    
-    if laps_a.empty or laps_b.empty:
-        raise ValueError("Selected driver did not log valid run segments during this session.")
-        
-    lap_a = laps_a.pick_fastest()
-    lap_b = laps_b.pick_fastest()
+    session.load(telemetry=False, laps=True, weather=False)
+    return session
+
+def get_active_drivers(session):
+    """Extracts and maps only drivers who actually logged valid run data."""
+    active_codes = session.laps['Driver'].unique()
+    active_driver_map = {}
+    for code in active_codes:
+        if code in MASTER_DRIVER_MAP:
+            active_driver_map[MASTER_DRIVER_MAP[code]] = code
+        else:
+            active_driver_map[f"Guest Driver ({code})"] = code
+    return dict(sorted(active_driver_map.items()))
+
+# -----------------------------------------------------------------------------
+# SIDEBAR CONTROLLER PANEL
+# -----------------------------------------------------------------------------
+pd_stream.sidebar.header("Workspace Parameters")
+selected_race = pd_stream.sidebar.selectbox("Select Grand Prix Circuit", list(AVAILABLE_RACES.keys()))
+
+selected_session_label = pd_stream.sidebar.selectbox("Select Weekend Session", list(SESSION_MAP.keys()))
+selected_session_code = SESSION_MAP[selected_session_label]
+
+# Enforce scheduling validation before execution
+race_meta = AVAILABLE_RACES[selected_race]
+if (selected_session_code in ["S", "SQ"]) and not race_meta["has_sprint"]:
+    pd_stream.sidebar.error(f"⚠️ {selected_race} did not feature a Sprint session. Resetting to Race.")
+    selected_session_code = "R"
+
+# Load the base session components to pull verified drivers
+try:
+    active_session = load_base_session(selected_race, selected_session_code)
+    filtered_drivers = get_active_drivers(active_session)
+except Exception:
+    pd_stream.sidebar.warning("API connection limit hit. Using core database fallback profiles.")
+    filtered_drivers = {v: k for k, v in MASTER_DRIVER_MAP.items()}
+
+# Dynamically generate selectors based purely on participating drivers
+driver_list = list(filtered_drivers.keys())
+def_idx_a = min(1, len(driver_list) - 1) if len(driver_list) > 1 else 0
+
+selected_driver_name_1 = pd_stream.sidebar.selectbox("Select Driver A", driver_list, index=def_idx_a)
+selected_driver_name_2 = pd_stream.sidebar.selectbox("Select Driver B", driver_list, index=0)
+
+driver_code_1 = filtered_drivers[selected_driver_name_1]
+driver_code_2 = filtered_drivers[selected_driver_name_2]
+
+# -----------------------------------------------------------------------------
+# CORE PIPELINE ENGINE (Processing telemetry)
+# -----------------------------------------------------------------------------
+def process_race_telemetry(session, driver_a_code, driver_b_code):
+    lap_a = session.laps.pick_driver(driver_a_code).pick_fastest()
+    lap_b = session.laps.pick_driver(driver_b_code).pick_fastest()
     
     tel_a = lap_a.get_car_data().add_distance()
     tel_b = lap_b.get_car_data().add_distance()
@@ -109,49 +146,20 @@ def process_race_telemetry(race_name, session_code, driver_a_code, driver_b_code
     }
 
 # -----------------------------------------------------------------------------
-# FAULT-TOLERANT MEMORY LAYER (f1_paddock_cache_vault)
+# EXECUTION & PLOT LAYER (PLOTS FIRST)
 # -----------------------------------------------------------------------------
-if "f1_paddock_cache_vault" not in pd_stream.session_state:
-    pd_stream.session_state["f1_paddock_cache_vault"] = {}
+data = None
+if driver_code_1 == driver_code_2:
+    pd_stream.warning("Please select two different drivers to perform a head-to-head comparison.")
+else:
+    with pd_stream.spinner("Syncing data arrays..."):
+        try:
+            # Re-verify and trigger the high-frequency telemetry stream pull safely
+            active_session.load(telemetry=True, laps=True, weather=False)
+            data = process_race_telemetry(active_session, driver_code_1, driver_code_2)
+        except Exception as e:
+            pd_stream.error("High-frequency data streams are currently restricted or incomplete for this combination. Try a different session.")
 
-def get_cached_telemetry(race_name, session_code, driver_a_code, driver_b_code):
-    cache_key = f"{race_name}_{session_code}_{driver_a_code}_{driver_b_code}"
-    
-    if cache_key not in pd_stream.session_state["f1_paddock_cache_vault"]:
-        with pd_stream.spinner("Initializing clean telemetry workspace drive..."):
-            try:
-                processed_data = process_race_telemetry(race_name, session_code, driver_a_code, driver_b_code)
-                pd_stream.session_state["f1_paddock_cache_vault"][cache_key] = processed_data
-            except Exception as e:
-                return None
-                
-    return pd_stream.session_state["f1_paddock_cache_vault"][cache_key]
-
-# -----------------------------------------------------------------------------
-# SIDEBAR CONTROLLER PANEL
-# -----------------------------------------------------------------------------
-pd_stream.sidebar.header("Workspace Parameters")
-selected_race = pd_stream.sidebar.selectbox("Select Grand Prix Circuit", list(AVAILABLE_RACES.keys()))
-
-selected_session_label = pd_stream.sidebar.selectbox("Select Weekend Session", list(SESSION_MAP.keys()))
-selected_session_code = SESSION_MAP[selected_session_label]
-
-race_meta = AVAILABLE_RACES[selected_race]
-if (selected_session_code in ["S", "SQ"]) and not race_meta["has_sprint"]:
-    pd_stream.sidebar.error(f"⚠️ {selected_race} is not a Sprint Weekend. Resetting to Grand Prix Race.")
-    selected_session_code = "R"
-
-selected_driver_name_1 = pd_stream.sidebar.selectbox("Select Driver A", list(DRIVER_MAP.keys()), index=1)
-selected_driver_name_2 = pd_stream.sidebar.selectbox("Select Driver B", list(DRIVER_MAP.keys()), index=0)
-
-driver_code_1 = DRIVER_MAP[selected_driver_name_1]
-driver_code_2 = DRIVER_MAP[selected_driver_name_2]
-
-data = get_cached_telemetry(selected_race, selected_session_code, driver_code_1, driver_code_2)
-
-# -----------------------------------------------------------------------------
-# GRAPH RENDERING LAYER (PLOTS FIRST)
-# -----------------------------------------------------------------------------
 if data is not None:
     fig_inputs = pd_plot.Figure()
     
@@ -184,8 +192,6 @@ if data is not None:
     
     pd_stream.plotly_chart(fig_inputs, use_container_width=True)
     pd_stream.plotly_chart(fig_outcome, use_container_width=True)
-else:
-    pd_stream.warning("Telemetry traces for this specific parameter combination are missing from the server logs. Please choose an alternate driver configuration or a competitive session (Qualifying/Race).")
 
 # -----------------------------------------------------------------------------
 # CONCISE & ACCESSIBLE USER GUIDE (MOVED TO BOTTOM)
