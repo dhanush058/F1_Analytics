@@ -26,32 +26,30 @@ MASTER_DRIVER_MAP = {
     "LAW": "Liam Lawson", "HAD": "Isack Hadjar", "BOR": "Gabriel Bortoleto"
 }
 
-# General calendar mapping for round translation
+# 🏎️ PRODUCTION FIXED CALENDAR: Map exact chronological completed round tracking 
+# to protect matching integrity against calendar shifts across 2024-2026.
 AVAILABLE_RACES = {
-    "01. Bahrain Grand Prix": 1,
-    "02. Saudi Arabian Grand Prix": 2,
-    "03. Australian Grand Prix": 3,
-    "04. Japanese Grand Prix": 4,
-    "05. Chinese Grand Prix": 5,
-    "06. Miami Grand Prix": 6,
-    "07. Emilia Romagna Grand Prix (Imola)": 7,
-    "08. Monaco Grand Prix": 8,
-    "09. Canadian Grand Prix": 9,
-    "10. Spanish Grand Prix": 10,
-    "11. Austrian Grand Prix": 11,
-    "12. British Grand Prix": 12,
-    "13. Hungarian Grand Prix": 13,
-    "14. Belgian Grand Prix": 14,
-    "15. Dutch Grand Prix": 15,
-    "16. Italian Grand Prix": 16,
-    "17. Azerbaijan Grand Prix": 17,
-    "18. Singapore Grand Prix": 18,
-    "19. United States Grand Prix (Austin)": 19,
-    "20. Mexico City Grand Prix": 20,
-    "21. São Paulo Grand Prix": 21,
-    "22. Las Vegas Grand Prix": 22,
-    "23. Qatar Grand Prix": 23,
-    "24. Abu Dhabi Grand Prix": 24
+    "01. Australian Grand Prix (Melbourne)": {"2024": 3, "2025": 1, "2026": 1},
+    "02. Chinese Grand Prix (Shanghai)": {"2024": 5, "2025": 2, "2026": 2},
+    "03. Japanese Grand Prix (Suzuka)": {"2024": 4, "2025": 3, "2026": 3},
+    "04. Miami Grand Prix (Miami)": {"2024": 6, "2025": 6, "2026": 6},
+    "05. Canadian Grand Prix (Montreal)": {"2024": 9, "2025": 7, "2026": 7},
+    "06. Monaco Grand Prix (Monte Carlo)": {"2024": 8, "2025": 8, "2026": 8},
+    "07. Spanish Grand Prix (Barcelona)": {"2024": 10, "2025": 9, "2026": 9},
+    "08. Austrian Grand Prix (Spielberg)": {"2024": 11, "2025": 10, "2026": 10},
+    "09. British Grand Prix (Silverstone)": {"2024": 12, "2025": 11, "2026": 11},
+    "10. Hungarian Grand Prix (Budapest)": {"2024": 13, "2025": 12, "2026": 13},
+    "11. Belgian Grand Prix (Spa)": {"2024": 14, "2025": 13, "2026": 12},
+    "12. Dutch Grand Prix (Zandvoort)": {"2024": 15, "2025": 14, "2026": 14},
+    "13. Italian Grand Prix (Monza)": {"2024": 16, "2025": 15, "2026": 15},
+    "14. Azerbaijan Grand Prix (Baku)": {"2024": 17, "2025": 4, "2026": 17},
+    "15. Singapore Grand Prix (Marina Bay)": {"2024": 18, "2025": 16, "2026": 18},
+    "16. United States Grand Prix (Austin)": {"2024": 19, "2025": 19, "2026": 19},
+    "17. Mexico City Grand Prix": {"2024": 20, "2025": 20, "2026": 20},
+    "18. São Paulo Grand Prix (Interlagos)": {"2024": 21, "2025": 21, "2026": 21},
+    "19. Las Vegas Grand Prix": {"2024": 22, "2025": 22, "2026": 22},
+    "20. Qatar Grand Prix (Lusail)": {"2024": 23, "2025": 23, "2026": 23},
+    "21. Abu Dhabi Grand Prix (Yas Marina)": {"2024": 24, "2025": 24, "2026": 24}
 }
 
 SESSION_MAP = {
@@ -76,6 +74,8 @@ def load_base_session(selected_year, round_num, session_code):
 
 def get_active_drivers(session):
     """Extracts and maps only drivers who actually logged valid run data."""
+    if session.laps.empty:
+        return {}
     active_codes = session.laps['Driver'].unique()
     active_driver_map = {}
     for code in active_codes:
@@ -94,21 +94,27 @@ pd_stream.sidebar.header("Workspace Parameters")
 selected_year = pd_stream.sidebar.selectbox("Select Season Year", [2024, 2025, 2026], index=0)
 
 selected_race_name = pd_stream.sidebar.selectbox("Select Grand Prix Circuit", list(AVAILABLE_RACES.keys()))
-round_number = AVAILABLE_RACES[selected_race_name]
+
+# Safely target the correct structural Round integer mapped for that exact year
+year_str = str(selected_year)
+round_number = AVAILABLE_RACES[selected_race_name][year_str]
 
 selected_session_label = pd_stream.sidebar.selectbox("Select Weekend Session", list(SESSION_MAP.keys()))
 selected_session_code = SESSION_MAP[selected_session_label]
 
 # Load the base session components dynamically using the chosen Year parameter
+session_load_success = True
 try:
     active_session = load_base_session(selected_year, round_number, selected_session_code)
     filtered_drivers = get_active_drivers(active_session)
+    if not filtered_drivers:
+        session_load_success = False
 except Exception:
-    pd_stream.sidebar.error("⚠️ Data trace currently missing or unavailable for this combination.")
+    session_load_success = False
     filtered_drivers = {}
 
 # Dynamically generate selectors based purely on participating drivers
-if filtered_drivers:
+if session_load_success and filtered_drivers:
     driver_list = list(filtered_drivers.keys())
     def_idx_a = min(1, len(driver_list) - 1) if len(driver_list) > 1 else 0
 
@@ -154,8 +160,8 @@ def process_race_telemetry(session, driver_a_code, driver_b_code):
 # EXECUTION & PLOT LAYER (PLOTS FIRST)
 # -----------------------------------------------------------------------------
 data = None
-if not filtered_drivers:
-    pd_stream.warning("Change your workspace parameter filters above to load an operational telemetry deck.")
+if not session_load_success:
+    pd_stream.warning(f"🏁 The telemetry data for {selected_year} {selected_race_name} ({selected_session_label}) is either a future event or has not been finalized on the FIA data logs yet. Please switch to a completed session.")
 elif driver_code_1 == driver_code_2:
     pd_stream.warning("Please select two different drivers to perform a head-to-head comparison.")
 else:
