@@ -52,43 +52,7 @@ SESSION_MAP = {
 }
 
 # -----------------------------------------------------------------------------
-# COMPREHENSIVE USER GUIDE & PERFORMANCE ANALYSIS FRAMEWORK
-# -----------------------------------------------------------------------------
-with pd_stream.expander("📖 Comprehensive User Guide & Telemetry Interpretation Blueprint", expanded=True):
-    pd_stream.markdown("""
-    ### How to Interpret the Workspace Canvas Architecture
-    This enterprise framework synchronizes high-frequency mechanical sensor outputs onto a shared **spatial distance grid (X-axis in Meters)**. This allows an analyst to isolate exactly where a driver extracts or loses lap time relative to their competitor.
-
-    ---
-
-    #### 📈 Chart 1: Driver Mechanical Ingestion Inputs (Speed & Throttle Overlays)
-    This dual-axis canvas visualizes car velocity and driver commitment profiles simultaneously across the circuit track profile.
-    
-    * **Velocity Speed Traces (Solid Lines):** 
-      * Measured in **km/h** on the **Left Y-Axis**.
-      * *How to read:* Look for the steep downward dips. These represent heavy deceleration zones leading into corner apexes. The lower the valley floor of the dip, the slower the minimum corner apex speed. 
-      * *Spotting performance gaps:* If one driver's solid line stays consistently higher during a valley floor, they are carrying superior mid-corner roll-speed.
-    * **Throttle Engagement Profiles (Dashed Lines):** 
-      * Measured from **0% to 100%** on the **Right Y-Axis**.
-      * *How to read:* Look at the slopes when exiting a valley. A straight vertical climb to 100% indicates aggressive, immediate initial power application. 
-      * *Spotting performance gaps:* If a driver's dashed trace hesitates, plateaus, or "steps" before hitting 100%, it reveals throttle instability, wheelspin, or oversteer corrections where they had to lift off the pedal.
-
-    ---
-
-    #### 📉 Chart 2: Downstream Structural Outcomes (Pacing Gap Delta Time)
-    This canvas represents the mathematical calculation of cumulative time separation between the two fastest laps.
-    
-    * **The Pacing Gap Delta (Area-Filled White Trace):**
-      * Measured in **Seconds** on the **Left Y-Axis**.
-      * **The Baseline (0.00s Zero Line):** This represents the constant cross-comparison boundary.
-      * *How to read the slope directional trajectory:*
-        * **When the curve slopes downward (Negative Trajectory):** Time is actively bleeding away from Driver B, meaning **Driver A is gaining a performance advantage**.
-        * **When the curve slopes upward (Positive Trajectory):** Time is swinging backward, meaning **Driver B is gaining a performance advantage**.
-      * *Analyzing micro-segments:* By tracking the micro-slopes directly underneath a specific velocity dip from Chart 1, you can deduce whether a driver gained their advantage through superior braking efficiency going *into* the turn or via a sharper throttle hookup coming *out* of it.
-    """)
-
-# -----------------------------------------------------------------------------
-# CORE PIPELINE ENGINE (Optimized Core Ingestion)
+# CORE PIPELINE ENGINE
 # -----------------------------------------------------------------------------
 def process_race_telemetry(race_name, session_code, driver_a_code, driver_b_code):
     race_config = AVAILABLE_RACES[race_name]
@@ -170,7 +134,7 @@ driver_code_2 = DRIVER_MAP[selected_driver_name_2]
 data = get_cached_telemetry(selected_race, selected_session_code, driver_code_1, driver_code_2)
 
 # -----------------------------------------------------------------------------
-# GRAPH RE-RENDERING CANVAS
+# GRAPH RENDERING LAYER (PLOTS UP FIRST)
 # -----------------------------------------------------------------------------
 if data is not None:
     fig_inputs = pd_plot.Figure()
@@ -206,3 +170,20 @@ if data is not None:
     pd_stream.plotly_chart(fig_outcome, use_container_width=True)
 else:
     pd_stream.warning("Telemetry traces for this specific parameter combination are missing from the server logs. Please choose an alternate driver configuration or a competitive session (Qualifying/Race).")
+
+# -----------------------------------------------------------------------------
+# CONCISE & ACCESSIBLE USER GUIDE (MOVED TO BOTTOM)
+# -----------------------------------------------------------------------------
+pd_stream.markdown("---")
+with pd_stream.expander("📖 Quick Dashboard User Guide", expanded=False):
+    pd_stream.markdown("""
+    This panel matches raw telemetry points from both drivers onto an exact **Distance Grid (Meters)** so you can see who won or lost time across the lap.
+
+    *   **Chart 1 (Speed & Throttle):** 
+        *   **Solid Lines (Speed):** Deep drops show braking zones. Higher valley floors mean a driver carried more corner exit speed.
+        *   **Dashed Lines (Throttle):** Shows how fast a driver hammered down on the gas pedal. Any flat plateaus or sudden drops indicate tyre wheelspin or stability corrections.
+    *   **Chart 2 (Time Delta Gap):** 
+        *   Shows the cumulative running time gap across the entire track layout.
+        *   When the graph **slopes downward**, **Driver A is gaining time**. 
+        *   When the graph **slopes upward**, **Driver B is gaining time**.
+    """)
