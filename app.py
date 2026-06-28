@@ -22,7 +22,8 @@ MASTER_DRIVER_MAP = {
     "HUL": "Nico Hulkenberg", "STR": "Lance Stroll", "ALO": "Fernando Alonso",
     "MAG": "Kevin Magnussen", "TSU": "Yuki Tsunoda", "RIC": "Daniel Ricciardo",
     "SAR": "Logan Sargeant", "ZHO": "Zhou Guanyu", "BEA": "Oliver Bearman",
-    "COL": "Franco Colapinto", "ANT": "Kimi Antonelli", "BOR": "Gabriel Bortoleto"
+    "COL": "Franco Colapinto", "ANT": "Kimi Antonelli", 
+    "LAW": "Liam Lawson", "HAD": "Isack Hadjar", "BOR": "Gabriel Bortoleto"
 }
 
 # General calendar mapping for round translation
@@ -89,7 +90,7 @@ def get_active_drivers(session):
 # -----------------------------------------------------------------------------
 pd_stream.sidebar.header("Workspace Parameters")
 
-# 📅 NEW: Year Selection Component Added
+# Year Selector Component
 selected_year = pd_stream.sidebar.selectbox("Select Season Year", [2024, 2025, 2026], index=0)
 
 selected_race_name = pd_stream.sidebar.selectbox("Select Grand Prix Circuit", list(AVAILABLE_RACES.keys()))
@@ -199,18 +200,30 @@ if data is not None:
     pd_stream.plotly_chart(fig_outcome, use_container_width=True)
 
 # -----------------------------------------------------------------------------
-# CONCISE & ACCESSIBLE USER GUIDE (MOVED TO BOTTOM)
+# PREMIUM & COMPREHENSIVE PERFORMANCE RADAR GUIDE
 # -----------------------------------------------------------------------------
 pd_stream.markdown("---")
-with pd_stream.expander("📖 Quick Dashboard User Guide", expanded=False):
+with pd_stream.expander("📖 Telemetry Performance Analytics & Interpretation Guide", expanded=False):
     pd_stream.markdown("""
-    This panel matches raw telemetry points from both drivers onto an exact **Distance Grid (Meters)** so you can see who won or lost time across the lap.
+    This advanced dashboard synchronizes raw, high-frequency vehicle telemetry channels onto a single **Normalized Spatial Grid (X-Axis in Meters)**. By eliminating time-mismatch artifacts, you can directly compare driver micro-inputs against structural lap time outcomes.
 
-    *   **Chart 1 (Speed & Throttle):** 
-        *   **Solid Lines (Speed):** Deep drops show braking zones. Higher valley floors mean a driver carried more corner exit speed.
-        *   **Dashed Lines (Throttle):** Shows how fast a driver hammered down on the gas pedal. Any flat plateaus or sudden drops indicate tyre wheelspin or stability corrections.
-    *   **Chart 2 (Time Delta Gap):** 
-        *   Shows the cumulative running time gap across the entire track layout.
-        *   When the graph **slopes downward**, **Driver A is gaining time**. 
-        *   When the graph **slopes upward**, **Driver B is gaining time**.
+    ### 📈 Chart 1: Driver Ingestion Inputs (Speed & Throttle Overlay)
+    This chart visualizes exactly what the drivers are doing with their physical inputs at every meter of the track.
+    
+    *   **Solid Traces (Car Speed in km/h):** Look for the steep downward valleys—these are major deceleration zones. 
+        *   *The Deep Analysis:* A narrower valley indicates superior, stable threshold braking. A higher valley floor means the driver carried more "roll-speed" through the geometric center (apex) of the turn.
+    *   **Dashed Traces (Throttle Pedal Engagement %):** Tracks how cleanly a driver applies power when exiting a corner.
+        *   *The Deep Analysis:* Look for a straight, immediate vertical line climbing back to 100%. If you spot staircase-like plateaus, jagged dips, or hesitations, it reveals traction instability, snap-oversteer, or active driver lifting to stabilize the chassis.
+
+    ### 📉 Chart 2: Structural Performance Outcomes (Pacing Time Delta)
+    This chart calculates the running, cumulative time difference between the two laps across the entire lap profile.
+    
+    *   **The 0.00s Baseline:** The horizontal zero-line is the reference benchmark. 
+    *   **Downward Slopes (Negative Trend):** The line dips down when **Driver A is pulling away** and actively pocketing lap time.
+    *   **Upward Slopes (Positive Trend):** The line climbs when **Driver B is gaining a performance advantage** and outperforming Driver A.
+    *   *The Pro Trick:* Look directly vertically at both charts at the exact same meter mark. You can deduce whether Driver A won a micro-sector because they brake later on corner entry (Speed trace drops later) or because Driver B had wheelspin on exit (Throttle trace stutters).
+    
+    ### 🛠️ Behind the Scenes Architectural Highlights
+    *   **1D Linear Interpolation Engine:** Telemetry sensors fire at different frequencies (e.g., speed vs. pedal positions). This app resamples and normalizes mismatched data arrays onto a strict 10-meter spatial interval baseline using `numpy.interp` to ensure a mathematically true comparison.
+    *   **Pure ECU Extraction:** Uses dedicated car computer channels (`get_car_data()`) to bypass unstable satellite telemetry loops, ensuring complete data consistency across both competitive sessions and free practice environments.
     """)
