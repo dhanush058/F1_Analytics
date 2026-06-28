@@ -31,7 +31,6 @@ DRIVER_MAP = {
     "Fernando Alonso": "ALO"
 }
 
-# Added an explicit metadata tracker for weekend configurations to bypass API deficits
 AVAILABLE_RACES = {
     "Australian Grand Prix (Melbourne)": {"year": 2023, "round": 3, "has_sprint": False},
     "Miami Grand Prix (Miami)": {"year": 2023, "round": 5, "has_sprint": True},
@@ -53,24 +52,43 @@ SESSION_MAP = {
 }
 
 # -----------------------------------------------------------------------------
-# WORKSPACE APPLICATION USER GUIDE
+# COMPREHENSIVE USER GUIDE & PERFORMANCE ANALYSIS FRAMEWORK
 # -----------------------------------------------------------------------------
-with pd_stream.expander("📖 Workspace User Guide & System Overview", expanded=False):
+with pd_stream.expander("📖 Comprehensive User Guide & Telemetry Interpretation Blueprint", expanded=True):
     pd_stream.markdown("""
-    #### Welcome to the F1 Telemetry Analysis Workspace
-    This interactive enterprise interface translates raw, high-frequency vehicle telemetry streams into a synchronized visual head-to-head format.
+    ### How to Interpret the Workspace Canvas Architecture
+    This enterprise framework synchronizes high-frequency mechanical sensor outputs onto a shared **spatial distance grid (X-axis in Meters)**. This allows an analyst to isolate exactly where a driver extracts or loses lap time relative to their competitor.
+
+    ---
+
+    #### 📈 Chart 1: Driver Mechanical Ingestion Inputs (Speed & Throttle Overlays)
+    This dual-axis canvas visualizes car velocity and driver commitment profiles simultaneously across the circuit track profile.
     
-    * **How to Use:**
-      1. Open the sidebar controller panel on the left.
-      2. Choose an event from the **Grand Prix Circuit** dropdown list.
-      3. Select the precise **Session Type** (Practice, Sprint, Qualifying, or Race).
-      4. Select **Driver A** and **Driver B** using their full names. 
-      
-    * **Validation Constraints:** Note that some tracks do not feature Sprint sessions. If an invalid weekend pairing is selected, the layout automatically rolls back to the main Grand Prix Race baseline to safeguard interface operations.
+    * **Velocity Speed Traces (Solid Lines):** 
+      * Measured in **km/h** on the **Left Y-Axis**.
+      * *How to read:* Look for the steep downward dips. These represent heavy deceleration zones leading into corner apexes. The lower the valley floor of the dip, the slower the minimum corner apex speed. 
+      * *Spotting performance gaps:* If one driver's solid line stays consistently higher during a valley floor, they are carrying superior mid-corner roll-speed.
+    * **Throttle Engagement Profiles (Dashed Lines):** 
+      * Measured from **0% to 100%** on the **Right Y-Axis**.
+      * *How to read:* Look at the slopes when exiting a valley. A straight vertical climb to 100% indicates aggressive, immediate initial power application. 
+      * *Spotting performance gaps:* If a driver's dashed trace hesitates, plateaus, or "steps" before hitting 100%, it reveals throttle instability, wheelspin, or oversteer corrections where they had to lift off the pedal.
+
+    ---
+
+    #### 📉 Chart 2: Downstream Structural Outcomes (Pacing Gap Delta Time)
+    This canvas represents the mathematical calculation of cumulative time separation between the two fastest laps.
+    
+    * **The Pacing Gap Delta (Area-Filled White Trace):**
+      * Measured in **Seconds** on the **Left Y-Axis**.
+      * **The Baseline (0.00s Zero Line):** This represents the constant cross-comparison boundary.
+      * *How to read the slope directional trajectory:*
+        * **When the curve slopes downward (Negative Trajectory):** Time is actively bleeding away from Driver B, meaning **Driver A is gaining a performance advantage**.
+        * **When the curve slopes upward (Positive Trajectory):** Time is swinging backward, meaning **Driver B is gaining a performance advantage**.
+      * *Analyzing micro-segments:* By tracking the micro-slopes directly underneath a specific velocity dip from Chart 1, you can deduce whether a driver gained their advantage through superior braking efficiency going *into* the turn or via a sharper throttle hookup coming *out* of it.
     """)
 
 # -----------------------------------------------------------------------------
-# CORE PIPELINE ENGINE (Data Ingestion & 1D Interpolation)
+# CORE PIPELINE ENGINE (Optimized Core Ingestion)
 # -----------------------------------------------------------------------------
 def process_race_telemetry(race_name, session_code, driver_a_code, driver_b_code):
     race_config = AVAILABLE_RACES[race_name]
@@ -78,11 +96,17 @@ def process_race_telemetry(race_name, session_code, driver_a_code, driver_b_code
     session = f1_api.get_session(race_config["year"], race_config["round"], session_code)
     session.load(telemetry=True, laps=True, weather=False)
     
-    lap_a = session.laps.pick_driver(driver_a_code).pick_fastest()
-    lap_b = session.laps.pick_driver(driver_b_code).pick_fastest()
+    laps_a = session.laps.pick_driver(driver_a_code)
+    laps_b = session.laps.pick_driver(driver_b_code)
     
-    tel_a = lap_a.get_telemetry()
-    tel_b = lap_b.get_telemetry()
+    if laps_a.empty or laps_b.empty:
+        raise ValueError("Selected driver did not log valid run segments during this session.")
+        
+    lap_a = laps_a.pick_fastest()
+    lap_b = laps_b.pick_fastest()
+    
+    tel_a = lap_a.get_car_data().add_distance()
+    tel_b = lap_b.get_car_data().add_distance()
     
     max_distance = max(tel_a['Distance'].max(), tel_b['Distance'].max())
     uniform_grid = np_math.arange(0, max_distance, 10)
@@ -132,11 +156,10 @@ selected_race = pd_stream.sidebar.selectbox("Select Grand Prix Circuit", list(AV
 selected_session_label = pd_stream.sidebar.selectbox("Select Weekend Session", list(SESSION_MAP.keys()))
 selected_session_code = SESSION_MAP[selected_session_label]
 
-# 🛡️ DEFECT BYPASS CONTROLLER: Enforce scheduling validation before calling the API
 race_meta = AVAILABLE_RACES[selected_race]
 if (selected_session_code in ["S", "SQ"]) and not race_meta["has_sprint"]:
     pd_stream.sidebar.error(f"⚠️ {selected_race} is not a Sprint Weekend. Resetting to Grand Prix Race.")
-    selected_session_code = "R"  # Soft fallback to main race to protect user runtime
+    selected_session_code = "R"
 
 selected_driver_name_1 = pd_stream.sidebar.selectbox("Select Driver A", list(DRIVER_MAP.keys()), index=1)
 selected_driver_name_2 = pd_stream.sidebar.selectbox("Select Driver B", list(DRIVER_MAP.keys()), index=0)
@@ -144,11 +167,10 @@ selected_driver_name_2 = pd_stream.sidebar.selectbox("Select Driver B", list(DRI
 driver_code_1 = DRIVER_MAP[selected_driver_name_1]
 driver_code_2 = DRIVER_MAP[selected_driver_name_2]
 
-# Execution Loop
 data = get_cached_telemetry(selected_race, selected_session_code, driver_code_1, driver_code_2)
 
 # -----------------------------------------------------------------------------
-# CLEAN GRAPH ARCHITECTURE
+# GRAPH RE-RENDERING CANVAS
 # -----------------------------------------------------------------------------
 if data is not None:
     fig_inputs = pd_plot.Figure()
@@ -183,4 +205,4 @@ if data is not None:
     pd_stream.plotly_chart(fig_inputs, use_container_width=True)
     pd_stream.plotly_chart(fig_outcome, use_container_width=True)
 else:
-    pd_stream.warning("Telemetry datasets temporarily locked down for this combination. Try another driver mapping or session.")
+    pd_stream.warning("Telemetry traces for this specific parameter combination are missing from the server logs. Please choose an alternate driver configuration or a competitive session (Qualifying/Race).")
