@@ -21,33 +21,36 @@ MASTER_DRIVER_MAP = {
     "OCO": "Esteban Ocon", "PER": "Sergio Perez", "BOT": "Valtteri Bottas",
     "HUL": "Nico Hulkenberg", "STR": "Lance Stroll", "ALO": "Fernando Alonso",
     "MAG": "Kevin Magnussen", "TSU": "Yuki Tsunoda", "RIC": "Daniel Ricciardo",
-    "SAR": "Logan Sargeant", "ZHO": "Zhou Guanyu", "DEV": "Nyck de Vries",
-    "LAW": "Liam Lawson", "BEA": "Oliver Bearman", "COL": "Franco Colapinto"
+    "SAR": "Logan Sargeant", "ZHO": "Zhou Guanyu", "BEA": "Oliver Bearman",
+    "COL": "Franco Colapinto", "ANT": "Kimi Antonelli", "BOR": "Gabriel Bortoleto"
 }
 
+# General calendar mapping for round translation
 AVAILABLE_RACES = {
-    "01. Bahrain Grand Prix (Sakhir)": {"year": 2023, "round": 1, "has_sprint": False},
-    "02. Saudi Arabian Grand Prix (Jeddah)": {"year": 2023, "round": 2, "has_sprint": False},
-    "03. Australian Grand Prix (Melbourne)": {"year": 2023, "round": 3, "has_sprint": False},
-    "04. Azerbaijan Grand Prix (Baku)": {"year": 2023, "round": 4, "has_sprint": True},
-    "05. Miami Grand Prix (Miami)": {"year": 2023, "round": 5, "has_sprint": True},
-    "06. Monaco Grand Prix (Monte Carlo)": {"year": 2023, "round": 6, "has_sprint": False},
-    "07. Spanish Grand Prix (Barcelona)": {"year": 2023, "round": 7, "has_sprint": False},
-    "08. Canadian Grand Prix (Montreal)": {"year": 2023, "round": 8, "has_sprint": False},
-    "09. Austrian Grand Prix (Spielberg)": {"year": 2023, "round": 9, "has_sprint": True},
-    "10. British Grand Prix (Silverstone)": {"year": 2023, "round": 10, "has_sprint": False},
-    "11. Hungarian Grand Prix (Budapest)": {"year": 2023, "round": 11, "has_sprint": False},
-    "12. Belgian Grand Prix (Spa-Francorchamps)": {"year": 2023, "round": 12, "has_sprint": True},
-    "13. Dutch Grand Prix (Zandvoort)": {"year": 2023, "round": 13, "has_sprint": False},
-    "14. Italian Grand Prix (Monza)": {"year": 2023, "round": 14, "has_sprint": False},
-    "15. Singapore Grand Prix (Marina Bay)": {"year": 2023, "round": 15, "has_sprint": False},
-    "16. Japanese Grand Prix (Suzuka)": {"year": 2023, "round": 16, "has_sprint": False},
-    "17. Qatar Grand Prix (Lusail)": {"year": 2023, "round": 17, "has_sprint": True},
-    "18. United States Grand Prix (Austin)": {"year": 2023, "round": 18, "has_sprint": True},
-    "19. Mexico City Grand Prix (Mexico City)": {"year": 2023, "round": 19, "has_sprint": False},
-    "20. São Paulo Grand Prix (Interlagos)": {"year": 2023, "round": 20, "has_sprint": True},
-    "21. Las Vegas Grand Prix (Las Vegas)": {"year": 2023, "round": 21, "has_sprint": False},
-    "22. Abu Dhabi Grand Prix (Yas Marina)": {"year": 2023, "round": 22, "has_sprint": False}
+    "01. Bahrain Grand Prix": 1,
+    "02. Saudi Arabian Grand Prix": 2,
+    "03. Australian Grand Prix": 3,
+    "04. Japanese Grand Prix": 4,
+    "05. Chinese Grand Prix": 5,
+    "06. Miami Grand Prix": 6,
+    "07. Emilia Romagna Grand Prix (Imola)": 7,
+    "08. Monaco Grand Prix": 8,
+    "09. Canadian Grand Prix": 9,
+    "10. Spanish Grand Prix": 10,
+    "11. Austrian Grand Prix": 11,
+    "12. British Grand Prix": 12,
+    "13. Hungarian Grand Prix": 13,
+    "14. Belgian Grand Prix": 14,
+    "15. Dutch Grand Prix": 15,
+    "16. Italian Grand Prix": 16,
+    "17. Azerbaijan Grand Prix": 17,
+    "18. Singapore Grand Prix": 18,
+    "19. United States Grand Prix (Austin)": 19,
+    "20. Mexico City Grand Prix": 20,
+    "21. São Paulo Grand Prix": 21,
+    "22. Las Vegas Grand Prix": 22,
+    "23. Qatar Grand Prix": 23,
+    "24. Abu Dhabi Grand Prix": 24
 }
 
 SESSION_MAP = {
@@ -64,10 +67,9 @@ SESSION_MAP = {
 # FAULT-TOLERANT SESSION LOADER & DYNAMIC FILTERING
 # -----------------------------------------------------------------------------
 @pd_stream.cache_resource
-def load_base_session(race_name, session_code):
+def load_base_session(selected_year, round_num, session_code):
     """Loads the core session structure to discover active participants dynamically."""
-    race_config = AVAILABLE_RACES[race_name]
-    session = f1_api.get_session(race_config["year"], race_config["round"], session_code)
+    session = f1_api.get_session(selected_year, round_num, session_code)
     session.load(telemetry=False, laps=True, weather=False)
     return session
 
@@ -79,41 +81,43 @@ def get_active_drivers(session):
         if code in MASTER_DRIVER_MAP:
             active_driver_map[MASTER_DRIVER_MAP[code]] = code
         else:
-            active_driver_map[f"Guest Driver ({code})"] = code
+            active_driver_map[f"Driver ({code})"] = code
     return dict(sorted(active_driver_map.items()))
 
 # -----------------------------------------------------------------------------
 # SIDEBAR CONTROLLER PANEL
 # -----------------------------------------------------------------------------
 pd_stream.sidebar.header("Workspace Parameters")
-selected_race = pd_stream.sidebar.selectbox("Select Grand Prix Circuit", list(AVAILABLE_RACES.keys()))
+
+# 📅 NEW: Year Selection Component Added
+selected_year = pd_stream.sidebar.selectbox("Select Season Year", [2024, 2025, 2026], index=0)
+
+selected_race_name = pd_stream.sidebar.selectbox("Select Grand Prix Circuit", list(AVAILABLE_RACES.keys()))
+round_number = AVAILABLE_RACES[selected_race_name]
 
 selected_session_label = pd_stream.sidebar.selectbox("Select Weekend Session", list(SESSION_MAP.keys()))
 selected_session_code = SESSION_MAP[selected_session_label]
 
-# Enforce scheduling validation before execution
-race_meta = AVAILABLE_RACES[selected_race]
-if (selected_session_code in ["S", "SQ"]) and not race_meta["has_sprint"]:
-    pd_stream.sidebar.error(f"⚠️ {selected_race} did not feature a Sprint session. Resetting to Race.")
-    selected_session_code = "R"
-
-# Load the base session components to pull verified drivers
+# Load the base session components dynamically using the chosen Year parameter
 try:
-    active_session = load_base_session(selected_race, selected_session_code)
+    active_session = load_base_session(selected_year, round_number, selected_session_code)
     filtered_drivers = get_active_drivers(active_session)
 except Exception:
-    pd_stream.sidebar.warning("API connection limit hit. Using core database fallback profiles.")
-    filtered_drivers = {v: k for k, v in MASTER_DRIVER_MAP.items()}
+    pd_stream.sidebar.error("⚠️ Data trace currently missing or unavailable for this combination.")
+    filtered_drivers = {}
 
 # Dynamically generate selectors based purely on participating drivers
-driver_list = list(filtered_drivers.keys())
-def_idx_a = min(1, len(driver_list) - 1) if len(driver_list) > 1 else 0
+if filtered_drivers:
+    driver_list = list(filtered_drivers.keys())
+    def_idx_a = min(1, len(driver_list) - 1) if len(driver_list) > 1 else 0
 
-selected_driver_name_1 = pd_stream.sidebar.selectbox("Select Driver A", driver_list, index=def_idx_a)
-selected_driver_name_2 = pd_stream.sidebar.selectbox("Select Driver B", driver_list, index=0)
+    selected_driver_name_1 = pd_stream.sidebar.selectbox("Select Driver A", driver_list, index=def_idx_a)
+    selected_driver_name_2 = pd_stream.sidebar.selectbox("Select Driver B", driver_list, index=0)
 
-driver_code_1 = filtered_drivers[selected_driver_name_1]
-driver_code_2 = filtered_drivers[selected_driver_name_2]
+    driver_code_1 = filtered_drivers[selected_driver_name_1]
+    driver_code_2 = filtered_drivers[selected_driver_name_2]
+else:
+    driver_code_1 = driver_code_2 = None
 
 # -----------------------------------------------------------------------------
 # CORE PIPELINE ENGINE (Processing telemetry)
@@ -149,16 +153,17 @@ def process_race_telemetry(session, driver_a_code, driver_b_code):
 # EXECUTION & PLOT LAYER (PLOTS FIRST)
 # -----------------------------------------------------------------------------
 data = None
-if driver_code_1 == driver_code_2:
+if not filtered_drivers:
+    pd_stream.warning("Change your workspace parameter filters above to load an operational telemetry deck.")
+elif driver_code_1 == driver_code_2:
     pd_stream.warning("Please select two different drivers to perform a head-to-head comparison.")
 else:
     with pd_stream.spinner("Syncing data arrays..."):
         try:
-            # Re-verify and trigger the high-frequency telemetry stream pull safely
             active_session.load(telemetry=True, laps=True, weather=False)
             data = process_race_telemetry(active_session, driver_code_1, driver_code_2)
-        except Exception as e:
-            pd_stream.error("High-frequency data streams are currently restricted or incomplete for this combination. Try a different session.")
+        except Exception:
+            pd_stream.error("High-frequency traces are currently locked out or missing from server logs for this specific session choice.")
 
 if data is not None:
     fig_inputs = pd_plot.Figure()
