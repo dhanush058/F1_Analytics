@@ -119,7 +119,7 @@ elif status == "success" and session is not None:
         if len(drivers) < 2:
             st.error("Insufficient driver telemetry logs available for this session to run spatial comparisons.")
         else:
-            # RESTORED PERFECTION: Driver selection boxes live exclusively in the SIDEBAR
+            # Driver selection boxes live exclusively in the SIDEBAR
             st.sidebar.markdown("---")
             st.sidebar.header("Driver Selection")
             driver_a = st.sidebar.selectbox("Select Driver A (Baseline)", drivers, index=0)
@@ -189,15 +189,26 @@ elif status == "success" and session is not None:
                 st.plotly_chart(fig, use_container_width=True)
                 
                 # ==========================================
-                # 7. PERFECTION STAKEHOLDER GUIDE INTERPRETATION
+                # 7. UPDATED COMPREHENSIVE & HUMANIZED GUIDE
                 # ==========================================
                 with st.expander("💡 Telemetry Diagnostic Interpretation Guide"):
-                    st.markdown("""
-                    * **Velocity Profiles:** Look for vertical gaps during deceleration zones. If one line drops later than the other, it indicates **Threshold Braking Efficiency**.
-                    * **Throttle Application:** A faster, steeper climb to 100% throttle out of low-speed corners indicates superior **Mechanical Traction Control** and stability.
-                    * **Time Delta Slopes:** 
-                        * A **downward sloping line** indicates Driver A is actively stretching the gap and gaining time.
-                        * An **upward sloping line** indicates Driver B is catching up or outperforming through that specific micro-sector.
+                    st.markdown(f"""
+                    This guide breaks down exactly how to read the visual charts above—translating raw lines into actual driving performance stories for both engineers and team strategists.
+
+                    ### 🏎️ 1. Velocity Profile (The Speed Chart)
+                    * **What to look for:** Look closely at the vertical spaces between lines right before deep corners. 
+                    * **The Story:** If one driver's line stays high and drops down later than the other, they are maximizing **threshold braking efficiency** (braking deeper and later into the corner). If their line dips lower at the absolute bottom of the curve, they are sacrificing minimum apex roll-speed to prioritize a sharper car rotation.
+
+                    ### ⚙️ 2. Throttle Application Variance (The Driver Inputs)
+                    * **What to look for:** Look at the steepness of the lines as they climb out of the low-speed corners back up to 100%.
+                    * **The Story:** A line that shoots straight up smoothly shows superior **mechanical traction control** and driver confidence. If you see jagged steps or a delayed lift off the bottom, it means the car is experiencing wheel-spin or rear-end instability, forcing the driver to feather the pedal to avoid spinning out.
+
+                    ### ⏱️ 3. Cumulative Time Delta (The Bottom Line)
+                    * **What to look for:** Look at the overall slope direction of the green line across the track.
+                    * **The Story:** This chart tracks who is actively winning the battle at every single meter of the lap.
+                        * **Downward Slope (📉):** Means **{driver_a}** is actively pulling away and gaining lap time in that micro-sector.
+                        * **Upward Slope (📈):** Means **{driver_b}** is outperforming the baseline and clawing time back.
+                        * **Flat Line (➖):** Both drivers are perfectly matched through that stretch of tarmac.
                     """)
     except Exception as render_err:
         st.error(f"Data mapping discrepancy encountered on this session's telemetry schema: {render_err}")
