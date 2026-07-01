@@ -128,13 +128,24 @@ elif status == "success" and session is not None:
             if driver_a == driver_b:
                 st.error("Please select two different drivers to perform a fair comparison.")
             else:
-                # Safely slice driver fastest laps
-                lap_a = session.laps.pick_driver(driver_a).pick_fastest()
-                lap_b = session.laps.pick_driver(driver_b).pick_fastest()
-                
-                # Fetch telemetry data frames and accumulate spatial vectors
-                tel_a = lap_a.get_car_data().add_distance()
-                tel_b = lap_b.get_car_data().add_distance()
+                # ==========================================
+                # DEFENSIVE SENSOR VALIDATION OVERRIDE
+                # ==========================================
+                try:
+                    # Safely slice driver fastest laps
+                    lap_a = session.laps.pick_driver(driver_a).pick_fastest()
+                    lap_b = session.laps.pick_driver(driver_b).pick_fastest()
+                    
+                    # Fetch telemetry data frames and accumulate spatial vectors
+                    tel_a = lap_a.get_car_data().add_distance()
+                    tel_b = lap_b.get_car_data().add_distance()
+                    
+                    if len(tel_a) == 0 or len(tel_b) == 0:
+                        raise ValueError("Telemetry data streams are currently empty.")
+                        
+                except Exception as telemetry_load_error:
+                    st.warning(f"⚠️ High-frequency sensor arrays for {driver_a} or {driver_b} are currently unfinalized or missing for this specific session type. Try switching session types (e.g., from Practice to Race/Qualifying).")
+                    st.stop() # Stops execution cleanly before the rendering engine breaks
                 
                 # ==========================================
                 # 5. SPATIAL GRID NORMALIZATION (THE CORE MATH)
@@ -226,7 +237,7 @@ elif status == "success" and session is not None:
                 st.plotly_chart(fig, use_container_width=True)
                 
                 # ==========================================
-                # 7. ADDED TECHNICAL AND STAKEHOLDER GUIDE
+                # 7. COMPREHENSIVE & HUMANIZED GUIDE
                 # ==========================================
                 with st.expander("💡 Telemetry Diagnostic Interpretation Guide"):
                     st.markdown(f"""
@@ -255,4 +266,4 @@ elif status == "success" and session is not None:
                         * **Flat Line (➖):** Both drivers are executing identical pacing through that specific stretch of tarmac.
                     """)
     except Exception as render_err:
-        st.error(f"Data mapping discrepancy encountered on this session's telemetry schema: {render_err}")
+        st.error(f"Unexpected operational discrepancy encountered: {render_err}")
