@@ -29,7 +29,6 @@ def fetch_bulletproof_schedule(year):
             race_map[int(row['RoundNumber'])] = f"{row['EventName']} ({row['Location']})"
         return race_map
     except Exception:
-        # High-reliability fallback map if the scheduling API server has an outage
         return {
             1: "Australia (Melbourne)", 2: "China (Shanghai)", 3: "Japan (Suzuka)",
             4: "Bahrain (Sakhir)", 5: "Saudi Arabia (Jeddah)", 6: "Miami (Miami)",
@@ -53,7 +52,7 @@ selected_round = st.sidebar.selectbox(
     format_func=lambda x: f"Round {x}: {race_options[x]}"
 )
 
-# FIXED & EXPLICIT: All requested F1 session variants mapped perfectly to API hooks
+# All F1 session variants mapped perfectly to API hooks
 session_mapping = {
     "Race": "R",
     "Qualifying": "Q",
@@ -79,7 +78,6 @@ def load_session_safely(year, round_num, session_type):
         session = fastf1.get_session(year, round_num, session_type)
         session.load(laps=True, telemetry=True, weather=False)
         
-        # Verify that telemetry frames actually contain usable rows
         if len(session.laps) == 0:
             return None, "empty_session"
             
@@ -112,12 +110,11 @@ elif status == "success" and session is not None:
         if len(drivers) < 2:
             st.error("Insufficient driver telemetry logs available for this session to run spatial comparisons.")
         else:
-            # Driver Selection Layout Flow
-            col1, col2 = st.columns(2)
-            with col1:
-                driver_a = st.selectbox("Select Driver A (Baseline)", drivers, index=0)
-            with col2:
-                driver_b = st.selectbox("Select Driver B (Comparison)", drivers, index=min(1, len(drivers)-1))
+            # RESTORED: Driver Selection placed cleanly inside the SIDEBAR
+            st.sidebar.markdown("---")
+            st.sidebar.header("Driver Selection")
+            driver_a = st.sidebar.selectbox("Select Driver A (Baseline)", drivers, index=0)
+            driver_b = st.sidebar.selectbox("Select Driver B (Comparison)", drivers, index=min(1, len(drivers)-1))
                 
             if driver_a == driver_b:
                 st.error("Please select two different drivers to perform a fair comparison.")
@@ -182,12 +179,16 @@ elif status == "success" and session is not None:
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Info Guide
+                # ==========================================
+                # 7. RESTORED DETAILED STAKEHOLDER GUIDE
+                # ==========================================
                 with st.expander("💡 Telemetry Diagnostic Interpretation Guide"):
                     st.markdown("""
                     * **Velocity Profiles:** Look for vertical gaps during deceleration zones. If one line drops later than the other, it indicates **Threshold Braking Efficiency**.
-                    * **Throttle Application:** A faster, steeper climb to 100% throttle out of low-speed corners indicates superior **Mechanical Traction Control**.
-                    * **Time Delta Slopes:** A downward sloping line means Driver A is gaining time; an upward sloping line means Driver B is faster through that micro-sector.
+                    * **Throttle Application:** A faster, steeper climb to 100% throttle out of low-speed corners indicates superior **Mechanical Traction Control** and stability.
+                    * **Time Delta Slopes:** 
+                        * A **downward sloping line** indicates Driver A is actively stretching the gap and gaining time.
+                        * An **upward sloping line** indicates Driver B is catching up or outperforming through that specific micro-sector.
                     """)
     except Exception as render_err:
         st.error(f"Data mapping discrepancy encountered on this session's telemetry schema: {render_err}")
