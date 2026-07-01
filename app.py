@@ -3,9 +3,8 @@ import fastf1
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import datetime
 
-# Enable robust disk caching to prevent API rate-limiting and maximize performance
+# Enable robust disk caching to maximize front-end performance
 fastf1.Cache.enable_cache('f1_cache') 
 
 st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
@@ -13,18 +12,16 @@ st.title("🏎️ F1 Spatial Telemetry Performance Analyzer")
 st.markdown("---")
 
 # ==========================================
-# 1. DYNAMIC CALENDAR & SCHEDULE INGESTION
+# 1. DYNAMIC CALENDAR INGESTION ENGINE
 # ==========================================
-@st.cache_data(ttl=86400) # Automatically refreshes once a day
+@st.cache_data(ttl=86400) # Refreshes once a day automatically
 def fetch_bulletproof_schedule(year):
     """
-    Dynamically pulls the official schedule from FastF1 servers.
-    This guarantees that calendar changes, cancellations, or shifts
-    never require manual code edits.
+    Dynamically pulls the official schedule from FastF1 servers to
+    ensure calendar updates never require manual code edits.
     """
     try:
         schedule = fastf1.get_event_schedule(year)
-        # Filter down to actual official race events that have a valid round number
         official_races = schedule[schedule['RoundNumber'] > 0]
         
         race_map = {}
@@ -32,7 +29,7 @@ def fetch_bulletproof_schedule(year):
             race_map[int(row['RoundNumber'])] = f"{row['EventName']} ({row['Location']})"
         return race_map
     except Exception:
-        # High-reliability fallback map if the scheduling API server is entirely down
+        # High-reliability fallback map if the scheduling API server has an outage
         return {
             1: "Australia (Melbourne)", 2: "China (Shanghai)", 3: "Japan (Suzuka)",
             4: "Bahrain (Sakhir)", 5: "Saudi Arabia (Jeddah)", 6: "Miami (Miami)",
@@ -40,11 +37,14 @@ def fetch_bulletproof_schedule(year):
             10: "Canada (Montreal)", 11: "Austria (Spielberg)", 12: "Great Britain (Silverstone)"
         }
 
-# Sidebar configuration
+# ==========================================
+# 2. SIDEBAR NAVIGATION & CONFIGURATION
+# ==========================================
 st.sidebar.header("Race Selection Configuration")
+
 selected_year = st.sidebar.selectbox("Select Season Year", [2026, 2025, 2024])
 
-# Dynamically build dropdown choices based on live season data
+# Dynamically pull the correct calendar options
 race_options = fetch_bulletproof_schedule(selected_year)
 
 selected_round = st.sidebar.selectbox(
@@ -53,11 +53,24 @@ selected_round = st.sidebar.selectbox(
     format_func=lambda x: f"Round {x}: {race_options[x]}"
 )
 
+# FIXED & EXPLICIT: All requested F1 session variants mapped perfectly to API hooks
+session_mapping = {
+    "Race": "R",
+    "Qualifying": "Q",
+    "Sprint": "S",
+    "Sprint Qualifying": "SQ",
+    "FP3": "FP3",
+    "FP2": "FP2",
+    "FP1": "FP1"
+}
+selected_session_label = st.sidebar.selectbox("Select Session Type", list(session_mapping.keys()))
+selected_session_code = session_mapping[selected_session_label]
+
 # ==========================================
-# 2. DEFENSIVE DATA-STREAM LOADING ENGINE
+# 3. DEFENSIVE DATA-STREAM LOADING ENGINE
 # ==========================================
 @st.cache_resource(show_spinner=False)
-def load_session_safely(year, round_num, session_type='R'):
+def load_session_safely(year, round_num, session_type):
     """
     Probes, downloads, and verifies telemetry records.
     Catches all internal FastF1 and FIA backend API errors dynamically.
@@ -73,24 +86,23 @@ def load_session_safely(year, round_num, session_type='R'):
         return session, "success"
     except Exception as e:
         error_msg = str(e).lower()
-        # Track whether the event hasn't happened yet or if telemetry logs are unfinalized
         if "not yet occurred" in error_msg or "upcoming" in error_msg or "future" in error_msg:
             return None, "upcoming"
         else:
             return None, "unfinalized"
 
-# Execute loading engine
-with st.spinner("Ingesting high-frequency telemetry streams directly from F1 servers..."):
-    session, status = load_session_safely(int(selected_year), int(selected_round))
+# Execute data ingestion safely
+with st.spinner(f"Ingesting high-frequency {selected_session_label} telemetry directly from F1 servers..."):
+    session, status = load_session_safely(int(selected_year), int(selected_round), selected_session_code)
 
 # ==========================================
-# 3. DYNAMIC FRONT-END ROUTING (ZERO CRASHES)
+# 4. DYNAMIC FRONT-END ROUTING & INTERACTION
 # ==========================================
 if status == "upcoming":
-    st.info(f"🏁 **Round {selected_round}: {race_options[selected_round]}** has either not occurred yet or is currently live. Normalized telemetry insights will generate immediately following official FIA session finalization.")
+    st.info(f"🏁 **Round {selected_round}: {race_options[selected_round]} ({selected_session_label})** has either not occurred yet or is currently live. Telemetry insights will generate immediately following official session finalization.")
 
 elif status == "unfinalized" or status == "empty_session":
-    st.warning(f"⚠️ Telemetry logs for **Round {selected_round}** are currently unfinalized or undergoing synchronization on the FIA servers. Please select a fully completed session.")
+    st.warning(f"⚠️ Telemetry logs for **Round {selected_round} ({selected_session_label})** are currently unfinalized or undergoing synchronization on the FIA servers. Please select a fully completed session.")
 
 elif status == "success" and session is not None:
     try:
@@ -100,6 +112,7 @@ elif status == "success" and session is not None:
         if len(drivers) < 2:
             st.error("Insufficient driver telemetry logs available for this session to run spatial comparisons.")
         else:
+            # Driver Selection Layout Flow
             col1, col2 = st.columns(2)
             with col1:
                 driver_a = st.selectbox("Select Driver A (Baseline)", drivers, index=0)
@@ -113,12 +126,12 @@ elif status == "success" and session is not None:
                 lap_a = session.laps.pick_driver(driver_a).pick_fastest()
                 lap_b = session.laps.pick_driver(driver_b).pick_fastest()
                 
-                # Fetch telemetry data frames
+                # Fetch telemetry data frames and accumulate spatial vectors
                 tel_a = lap_a.get_car_data().add_distance()
                 tel_b = lap_b.get_car_data().add_distance()
                 
                 # ==========================================
-                # 4. SPATIAL GRID NORMALIZATION (THE CORE MATH)
+                # 5. SPATIAL GRID NORMALIZATION (THE CORE MATH)
                 # ==========================================
                 max_distance = min(tel_a['Distance'].max(), tel_b['Distance'].max())
                 
@@ -139,7 +152,7 @@ elif status == "success" and session is not None:
                 time_delta = time_a_norm - time_b_norm
                 
                 # ==========================================
-                # 5. DIAGNOSTIC UI CHART CONFIGURATION
+                # 6. DIAGNOSTIC UI CHART CONFIGURATION
                 # ==========================================
                 fig = make_subplots(
                     rows=3, cols=1, 
@@ -164,7 +177,7 @@ elif status == "success" and session is not None:
                 fig.add_trace(go.Scatter(x=uniform_grid, y=time_delta, name="Pacing Delta", line=dict(color='#2ca02c', width=2.5)), row=3, col=1)
                 
                 # Polish Layout Architecture
-                fig.update_layout(height=850, title_text=f"Lap Analysis: {driver_a} vs {driver_b} ({session.event['EventName']} {selected_year})", hovermode="x unified")
+                fig.update_layout(height=850, title_text=f"Lap Analysis: {driver_a} vs {driver_b} ({session.event['EventName']} - {selected_session_label} {selected_year})", hovermode="x unified")
                 fig.update_xaxes(title_text="Track Position (Meters)", row=3, col=1)
                 
                 st.plotly_chart(fig, use_container_width=True)
