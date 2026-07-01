@@ -1,213 +1,180 @@
-import streamlit as pd_stream
-import fastf1 as f1_api
-import numpy as np_math
-import plotly.graph_objects as pd_plot
-import os
+import streamlit as st
+import fastf1
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import datetime
 
-# -----------------------------------------------------------------------------
-# CONFIGURATION & WORKSPACE SETUP
-# -----------------------------------------------------------------------------
-pd_stream.set_page_config(page_title="F1 Telemetry UX Workspace", layout="wide")
+# Enable robust disk caching to prevent API rate-limiting and maximize performance
+fastf1.Cache.enable_cache('f1_cache') 
 
-CACHE_DIR = os.path.join(os.getcwd(), "fastf1_raw_cache")
-os.makedirs(CACHE_DIR, exist_ok=True)
-f1_api.Cache.enable_cache(CACHE_DIR)
+st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
+st.title("🏎️ F1 Spatial Telemetry Performance Analyzer")
+st.markdown("---")
 
-# Comprehensive Master Driver Database
-MASTER_DRIVER_MAP = {
-    "VER": "Max Verstappen", "HAM": "Lewis Hamilton", "LEC": "Charles Leclerc",
-    "NOR": "Lando Norris", "PIA": "Oscar Piastri", "RUS": "George Russell",
-    "SAI": "Carlos Sainz", "ALB": "Alex Albon", "GAS": "Pierre Gasly",
-    "OCO": "Esteban Ocon", "PER": "Sergio Perez", "BOT": "Valtteri Bottas",
-    "HUL": "Nico Hulkenberg", "STR": "Lance Stroll", "ALO": "Fernando Alonso",
-    "MAG": "Kevin Magnussen", "TSU": "Yuki Tsunoda", "RIC": "Daniel Ricciardo",
-    "SAR": "Logan Sargeant", "ZHO": "Zhou Guanyu", "BEA": "Oliver Bearman",
-    "COL": "Franco Colapinto", "ANT": "Kimi Antonelli", 
-    "LAW": "Liam Lawson", "HAD": "Isack Hadjar", "BOR": "Gabriel Bortoleto"
-}
+# ==========================================
+# 1. DYNAMIC CALENDAR & SCHEDULE INGESTION
+# ==========================================
+@st.cache_data(ttl=86400) # Automatically refreshes once a day
+def fetch_bulletproof_schedule(year):
+    """
+    Dynamically pulls the official schedule from FastF1 servers.
+    This guarantees that calendar changes, cancellations, or shifts
+    never require manual code edits.
+    """
+    try:
+        schedule = fastf1.get_event_schedule(year)
+        # Filter down to actual official race events that have a valid round number
+        official_races = schedule[schedule['RoundNumber'] > 0]
+        
+        race_map = {}
+        for _, row in official_races.iterrows():
+            race_map[int(row['RoundNumber'])] = f"{row['EventName']} ({row['Location']})"
+        return race_map
+    except Exception:
+        # High-reliability fallback map if the scheduling API server is entirely down
+        return {
+            1: "Australia (Melbourne)", 2: "China (Shanghai)", 3: "Japan (Suzuka)",
+            4: "Bahrain (Sakhir)", 5: "Saudi Arabia (Jeddah)", 6: "Miami (Miami)",
+            7: "Emilia Romagna (Imola)", 8: "Monaco (Monaco)", 9: "Spain (Barcelona)",
+            10: "Canada (Montreal)", 11: "Austria (Spielberg)", 12: "Great Britain (Silverstone)"
+        }
 
-# Simplified clear strings for cross-year database lookup integration
-AVAILABLE_RACES = [
-    "Australia", "Bahrain", "Saudi Arabia", "Japan", "China", "Miami", 
-    "Imola", "Monaco", "Canada", "Spain", "Austria", "Great Britain", 
-    "Hungary", "Belgium", "Netherlands", "Monza", "Azerbaijan", 
-    "Singapore", "Austin", "Mexico", "Brazil", "Las Vegas", "Qatar", "Abu Dhabi"
-]
+# Sidebar configuration
+st.sidebar.header("Race Selection Configuration")
+selected_year = st.sidebar.selectbox("Select Season Year", [2026, 2025, 2024])
 
-SESSION_MAP = {
-    "Grand Prix Race": "R",
-    "Qualifying Session": "Q",
-    "Sprint Race": "S",
-    "Sprint Qualifying": "SQ",
-    "Free Practice 1": "FP1",
-    "Free Practice 2": "FP2",
-    "Free Practice 3": "FP3"
-}
+# Dynamically build dropdown choices based on live season data
+race_options = fetch_bulletproof_schedule(selected_year)
 
-# -----------------------------------------------------------------------------
-# FAULT-TOLERANT SESSION LOADER & DYNAMIC FILTERING
-# -----------------------------------------------------------------------------
-@pd_stream.cache_resource
-def load_base_session(selected_year, gp_name, session_code):
-    """Loads the core session structure using native fuzzy string matching."""
-    session = f1_api.get_session(selected_year, gp_name, session_code)
-    session.load(telemetry=False, laps=True, weather=False)
-    return session
+selected_round = st.sidebar.selectbox(
+    "Select Grand Prix Round", 
+    options=list(race_options.keys()), 
+    format_func=lambda x: f"Round {x}: {race_options[x]}"
+)
 
-def get_active_drivers(session):
-    """Extracts and maps only drivers who actually logged valid run data."""
-    if session.laps.empty:
-        return {}
-    active_codes = session.laps['Driver'].unique()
-    active_driver_map = {}
-    for code in active_codes:
-        if code in MASTER_DRIVER_MAP:
-            active_driver_map[MASTER_DRIVER_MAP[code]] = code
+# ==========================================
+# 2. DEFENSIVE DATA-STREAM LOADING ENGINE
+# ==========================================
+@st.cache_resource(show_spinner=False)
+def load_session_safely(year, round_num, session_type='R'):
+    """
+    Probes, downloads, and verifies telemetry records.
+    Catches all internal FastF1 and FIA backend API errors dynamically.
+    """
+    try:
+        session = fastf1.get_session(year, round_num, session_type)
+        session.load(laps=True, telemetry=True, weather=False)
+        
+        # Verify that telemetry frames actually contain usable rows
+        if len(session.laps) == 0:
+            return None, "empty_session"
+            
+        return session, "success"
+    except Exception as e:
+        error_msg = str(e).lower()
+        # Track whether the event hasn't happened yet or if telemetry logs are unfinalized
+        if "not yet occurred" in error_msg or "upcoming" in error_msg or "future" in error_msg:
+            return None, "upcoming"
         else:
-            active_driver_map[f"Driver ({code})"] = code
-    return dict(sorted(active_driver_map.items()))
+            return None, "unfinalized"
 
-# -----------------------------------------------------------------------------
-# SIDEBAR CONTROLLER PANEL
-# -----------------------------------------------------------------------------
-pd_stream.sidebar.header("Workspace Parameters")
+# Execute loading engine
+with st.spinner("Ingesting high-frequency telemetry streams directly from F1 servers..."):
+    session, status = load_session_safely(int(selected_year), int(selected_round))
 
-# Year Selector Component
-selected_year = pd_stream.sidebar.selectbox("Select Season Year", [2024, 2025, 2026], index=0)
+# ==========================================
+# 3. DYNAMIC FRONT-END ROUTING (ZERO CRASHES)
+# ==========================================
+if status == "upcoming":
+    st.info(f"🏁 **Round {selected_round}: {race_options[selected_round]}** has either not occurred yet or is currently live. Normalized telemetry insights will generate immediately following official FIA session finalization.")
 
-selected_race_name = pd_stream.sidebar.selectbox("Select Grand Prix Circuit", AVAILABLE_RACES)
+elif status == "unfinalized" or status == "empty_session":
+    st.warning(f"⚠️ Telemetry logs for **Round {selected_round}** are currently unfinalized or undergoing synchronization on the FIA servers. Please select a fully completed session.")
 
-selected_session_label = pd_stream.sidebar.selectbox("Select Weekend Session", list(SESSION_MAP.keys()))
-selected_session_code = SESSION_MAP[selected_session_label]
-
-# Load the base session components dynamically using native string queries
-session_load_success = True
-try:
-    active_session = load_base_session(selected_year, selected_race_name, selected_session_code)
-    filtered_drivers = get_active_drivers(active_session)
-    if not filtered_drivers:
-        session_load_success = False
-except Exception:
-    session_load_success = False
-    filtered_drivers = {}
-
-# Dynamically generate selectors based purely on participating drivers
-if session_load_success and filtered_drivers:
-    driver_list = list(filtered_drivers.keys())
-    def_idx_a = min(1, len(driver_list) - 1) if len(driver_list) > 1 else 0
-
-    selected_driver_name_1 = pd_stream.sidebar.selectbox("Select Driver A", driver_list, index=def_idx_a)
-    selected_driver_name_2 = pd_stream.sidebar.selectbox("Select Driver B", driver_list, index=0)
-
-    driver_code_1 = filtered_drivers[selected_driver_name_1]
-    driver_code_2 = filtered_drivers[selected_driver_name_2]
-else:
-    driver_code_1 = driver_code_2 = None
-
-# -----------------------------------------------------------------------------
-# CORE PIPELINE ENGINE (Processing telemetry)
-# -----------------------------------------------------------------------------
-def process_race_telemetry(session, driver_a_code, driver_b_code):
-    lap_a = session.laps.pick_driver(driver_a_code).pick_fastest()
-    lap_b = session.laps.pick_driver(driver_b_code).pick_fastest()
-    
-    tel_a = lap_a.get_car_data().add_distance()
-    tel_b = lap_b.get_car_data().add_distance()
-    
-    max_distance = max(tel_a['Distance'].max(), tel_b['Distance'].max())
-    uniform_grid = np_math.arange(0, max_distance, 10)
-    
-    speed_a = np_math.interp(uniform_grid, tel_a['Distance'], tel_a['Speed'])
-    throttle_a = np_math.interp(uniform_grid, tel_a['Distance'], tel_a['Throttle'])
-    time_a = np_math.interp(uniform_grid, tel_a['Distance'], tel_a['Time'].dt.total_seconds())
-    
-    speed_b = np_math.interp(uniform_grid, tel_b['Distance'], tel_b['Speed'])
-    throttle_b = np_math.interp(uniform_grid, tel_b['Distance'], tel_b['Throttle'])
-    time_b = np_math.interp(uniform_grid, tel_b['Distance'], tel_b['Time'].dt.total_seconds())
-    
-    time_delta = time_a - time_b
-    
-    return {
-        "grid": uniform_grid,
-        "speed_a": speed_a, "throttle_a": throttle_a,
-        "speed_b": speed_b, "throttle_b": throttle_b,
-        "time_delta": time_delta
-    }
-
-# -----------------------------------------------------------------------------
-# EXECUTION & PLOT LAYER (PLOTS FIRST)
-# -----------------------------------------------------------------------------
-data = None
-if not session_load_success:
-    pd_stream.warning(f"🏁 The telemetry data for {selected_year} {selected_race_name} ({selected_session_label}) is either an upcoming event or has not been finalized on the FIA data logs yet. Please switch to a completed session.")
-elif driver_code_1 == driver_code_2:
-    pd_stream.warning("Please select two different drivers to perform a head-to-head comparison.")
-else:
-    with pd_stream.spinner("Syncing data arrays..."):
-        try:
-            active_session.load(telemetry=True, laps=True, weather=False)
-            data = process_race_telemetry(active_session, driver_code_1, driver_code_2)
-        except Exception:
-            pd_stream.error("High-frequency traces are currently locked out or missing from server logs for this specific session choice.")
-
-if data is not None:
-    fig_inputs = pd_plot.Figure()
-    
-    fig_inputs.add_trace(pd_plot.Scatter(x=data["grid"], y=data["speed_a"], name=f"{selected_driver_name_1} Speed", line=dict(color="#00D2BE", width=2)))
-    fig_inputs.add_trace(pd_plot.Scatter(x=data["grid"], y=data["throttle_a"], name=f"{selected_driver_name_1} Throttle %", line=dict(color="#00D2BE", dash="dash", width=1.5), yaxis="y2"))
-    
-    fig_inputs.add_trace(pd_plot.Scatter(x=data["grid"], y=data["speed_b"], name=f"{selected_driver_name_2} Speed", line=dict(color="#0600EF", width=2)))
-    fig_inputs.add_trace(pd_plot.Scatter(x=data["grid"], y=data["throttle_b"], name=f"{selected_driver_name_2} Throttle %", line=dict(color="#0600EF", dash="dash", width=1.5), yaxis="y2"))
-    
-    fig_inputs.update_layout(
-        xaxis=dict(title="Distance (Meters)"),
-        yaxis=dict(title="Speed (km/h)"),
-        yaxis2=dict(title="Throttle %", overlaying="y", side="right", range=[0, 105]),
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=50, r=50, t=30, b=30),
-        height=400
-    )
-    
-    fig_outcome = pd_plot.Figure()
-    fig_outcome.add_trace(pd_plot.Scatter(x=data["grid"], y=data["time_delta"], name="Pacing Gap Delta", line=dict(color="#FFFFFF", width=2), fill="tozeroy"))
-    
-    fig_outcome.update_layout(
-        xaxis=dict(title="Distance (Meters)"),
-        yaxis=dict(title="Delta Time (Seconds)"),
-        hovermode="x unified",
-        margin=dict(l=50, r=50, t=20, b=30),
-        height=250
-    )
-    
-    pd_stream.plotly_chart(fig_inputs, use_container_width=True)
-    pd_stream.plotly_chart(fig_outcome, use_container_width=True)
-
-# -----------------------------------------------------------------------------
-# PREMIUM & COMPREHENSIVE PERFORMANCE RADAR GUIDE
-# -----------------------------------------------------------------------------
-pd_stream.markdown("---")
-with pd_stream.expander("📖 Telemetry Performance Analytics & Interpretation Guide", expanded=False):
-    pd_stream.markdown("""
-    This advanced dashboard synchronizes raw, high-frequency vehicle telemetry channels onto a single **Normalized Spatial Grid (X-Axis in Meters)**. By eliminating time-mismatch artifacts, you can directly compare driver micro-inputs against structural lap time outcomes.
-
-    ### 📈 Chart 1: Driver Ingestion Inputs (Speed & Throttle Overlay)
-    This chart visualizes exactly what the drivers are doing with their physical inputs at every meter of the track.
-    
-    *   **Solid Traces (Car Speed in km/h):** Look for the steep downward valleys—these are major deceleration zones. 
-        *   *The Deep Analysis:* A narrower valley indicates superior, stable threshold braking. A higher valley floor means the driver carried more "roll-speed" through the geometric center (apex) of the turn.
-    *   **Dashed Traces (Throttle Pedal Engagement %):** Tracks how cleanly a driver applies power when exiting a corner.
-        *   *The Deep Analysis:* Look for a straight, immediate vertical line climbing back to 100%. If you spot staircase-like plateaus, jagged dips, or hesitations, it reveals traction instability, snap-oversteer, or active driver lifting to stabilize the chassis.
-
-    ### 📉 Chart 2: Structural Performance Outcomes (Pacing Time Delta)
-    This chart calculates the running, cumulative time difference between the two laps across the entire lap profile.
-    
-    *   **The 0.00s Baseline:** The horizontal zero-line is the reference benchmark. 
-    *   **Downward Slopes (Negative Trend):** The line dips down when **Driver A is pulling away** and actively pocketing lap time.
-    *   **Upward Slopes (Positive Trend):** The line climbs when **Driver B is gaining a performance advantage** and outperforming Driver A.
-    *   *The Pro Trick:* Look directly vertically at both charts at the exact same meter mark. You can deduce whether Driver A won a micro-sector because they brake later on corner entry (Speed trace drops later) or because Driver B had wheelspin on exit (Throttle trace stutters).
-    
-    ### 🛠️ Behind the Scenes Architectural Highlights
-    *   **1D Linear Interpolation Engine:** Telemetry sensors fire at different frequencies (e.g., speed vs. pedal positions). This app resamples and normalizes mismatched data arrays onto a strict 10-meter spatial interval baseline using `numpy.interp` to ensure a mathematically true comparison.
-    *   **Pure ECU Extraction:** Uses dedicated car computer channels (`get_car_data()`) to bypass unstable satellite telemetry loops, ensuring complete data consistency across both competitive sessions and free practice environments.
-    """)
+elif status == "success" and session is not None:
+    try:
+        # Extract unique drivers dynamically based on active telemetry logs
+        drivers = sorted(list(set(session.laps['Driver'].dropna().unique())))
+        
+        if len(drivers) < 2:
+            st.error("Insufficient driver telemetry logs available for this session to run spatial comparisons.")
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                driver_a = st.selectbox("Select Driver A (Baseline)", drivers, index=0)
+            with col2:
+                driver_b = st.selectbox("Select Driver B (Comparison)", drivers, index=min(1, len(drivers)-1))
+                
+            if driver_a == driver_b:
+                st.error("Please select two different drivers to perform a fair comparison.")
+            else:
+                # Safely slice driver fastest laps
+                lap_a = session.laps.pick_driver(driver_a).pick_fastest()
+                lap_b = session.laps.pick_driver(driver_b).pick_fastest()
+                
+                # Fetch telemetry data frames
+                tel_a = lap_a.get_car_data().add_distance()
+                tel_b = lap_b.get_car_data().add_distance()
+                
+                # ==========================================
+                # 4. SPATIAL GRID NORMALIZATION (THE CORE MATH)
+                # ==========================================
+                max_distance = min(tel_a['Distance'].max(), tel_b['Distance'].max())
+                
+                # Construct perfectly uniform 10-meter spatial coordinates
+                uniform_grid = np.arange(0, max_distance, 10)
+                
+                # Execute 1D Linear Interpolation to bypass time-asynchronous sensor drift
+                speed_a_norm = np.interp(uniform_grid, tel_a['Distance'], tel_a['Speed'])
+                speed_b_norm = np.interp(uniform_grid, tel_b['Distance'], tel_b['Speed'])
+                
+                throttle_a_norm = np.interp(uniform_grid, tel_a['Distance'], tel_a['Throttle'])
+                throttle_b_norm = np.interp(uniform_grid, tel_b['Distance'], tel_b['Throttle'])
+                
+                time_a_norm = np.interp(uniform_grid, tel_a['Distance'], tel_a['Time'].dt.total_seconds())
+                time_b_norm = np.interp(uniform_grid, tel_b['Distance'], tel_b['Time'].dt.total_seconds())
+                
+                # Accumulate the true, localized Pacing Time Delta relative to Driver B
+                time_delta = time_a_norm - time_b_norm
+                
+                # ==========================================
+                # 5. DIAGNOSTIC UI CHART CONFIGURATION
+                # ==========================================
+                fig = make_subplots(
+                    rows=3, cols=1, 
+                    shared_xaxes=True, 
+                    vertical_spacing=0.05,
+                    subplot_titles=(
+                        f"Velocity Comparison Profile (km/h)", 
+                        "Throttle Application Variance (%)", 
+                        f"Cumulative Time Delta (Seconds) - Negative means {driver_a} is faster"
+                    )
+                )
+                
+                # Subplot 1: Speed Profiles
+                fig.add_trace(go.Scatter(x=uniform_grid, y=speed_a_norm, name=f"{driver_a} Speed", line=dict(color='#1f77b4', width=2)), row=1, col=1)
+                fig.add_trace(go.Scatter(x=uniform_grid, y=speed_b_norm, name=f"{driver_b} Speed", line=dict(color='#ff7f0e', width=2, dash='dash')), row=1, col=1)
+                
+                # Subplot 2: Throttle Inputs
+                fig.add_trace(go.Scatter(x=uniform_grid, y=throttle_a_norm, name=f"{driver_a} Throttle", line=dict(color='#1f77b4', width=1.5), showlegend=False), row=2, col=1)
+                fig.add_trace(go.Scatter(x=uniform_grid, y=throttle_b_norm, name=f"{driver_b} Throttle", line=dict(color='#ff7f0e', width=1.5, dash='dash'), showlegend=False), row=2, col=1)
+                
+                # Subplot 3: Cumulative Time Delta Outcome
+                fig.add_trace(go.Scatter(x=uniform_grid, y=time_delta, name="Pacing Delta", line=dict(color='#2ca02c', width=2.5)), row=3, col=1)
+                
+                # Polish Layout Architecture
+                fig.update_layout(height=850, title_text=f"Lap Analysis: {driver_a} vs {driver_b} ({session.event['EventName']} {selected_year})", hovermode="x unified")
+                fig.update_xaxes(title_text="Track Position (Meters)", row=3, col=1)
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Info Guide
+                with st.expander("💡 Telemetry Diagnostic Interpretation Guide"):
+                    st.markdown("""
+                    * **Velocity Profiles:** Look for vertical gaps during deceleration zones. If one line drops later than the other, it indicates **Threshold Braking Efficiency**.
+                    * **Throttle Application:** A faster, steeper climb to 100% throttle out of low-speed corners indicates superior **Mechanical Traction Control**.
+                    * **Time Delta Slopes:** A downward sloping line means Driver A is gaining time; an upward sloping line means Driver B is faster through that micro-sector.
+                    """)
+    except Exception as render_err:
+        st.error(f"Data mapping discrepancy encountered on this session's telemetry schema: {render_err}")
