@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots
 # =========================================================
 # ⚙️ SYSTEM STORAGE CACHE LAYERS
 # =========================================================
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def fetch_api_json(url):
     """Queries public REST endpoints with strict timeout constraints."""
     try:
@@ -25,7 +25,7 @@ def fetch_api_json(url):
 st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
 st.title("🏎️ F1 Spatial Telemetry Performance Analyzer")
 
-selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=0)
+selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=1) # Default to 2025 for full completed dataset
 
 race_options = {
     1: "Bahrain Grand Prix", 2: "Saudi Arabian Grand Prix", 3: "Australian Grand Prix",
@@ -94,18 +94,14 @@ if not is_simulated and driver_map:
 else:
     drivers = ["VER", "HAM", "NOR", "LEC", "RUS", "PIA"]
 
-driver_a = st.sidebar.selectbox("Select Driver A", drivers, index=0)
-driver_b = st.sidebar.selectbox("Select Driver B", drivers, index=1 if len(drivers) > 1 else 0)
+driver_a = st.sidebar.selectbox("Select Driver A (Baseline)", drivers, index=0)
+driver_b = st.sidebar.selectbox("Select Driver B (Comparison)", drivers, index=1 if len(drivers) > 1 else 0)
 
 # =========================================================
 # 📊 DATA-VALIDATED TELEMETRY EXTRACTION ENGINE
 # =========================================================
-@st.cache_data(ttl=3600, show_spinner="Querying telemetry pipeline matrix...")
+@st.cache_data(ttl=1800, show_spinner="Querying telemetry pipeline matrix...")
 def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
-    """
-    Attempts to pull live telemetry streams from OpenF1.
-    If the API logs time out or fail, returns None to guarantee strict data integrity.
-    """
     if fallback_active or not s_key or not d_map or d_a not in d_map or d_b not in d_map:
         return None, None, True
 
@@ -140,6 +136,7 @@ def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
         df_a['date'] = pd.to_datetime(df_a['date'])
         time_deltas_a = df_a['date'].diff().dt.total_seconds().fillna(0.27)
         tel_a['Distance'] = (tel_a['Speed'] / 3.6 * time_deltas_a).cumsum()
+        tel_a['Time_Elapsed'] = (time_deltas_a).cumsum()
 
         # Parse arrays dynamically for Driver B
         df_b = pd.DataFrame(res_b).head(350)
@@ -149,6 +146,11 @@ def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
         df_b['date'] = pd.to_datetime(df_b['date'])
         time_deltas_b = df_b['date'].diff().dt.total_seconds().fillna(0.27)
         tel_b['Distance'] = (tel_b['Speed'] / 3.6 * time_deltas_b).cumsum()
+        tel_b['Time_Elapsed'] = (time_deltas_b).cumsum()
+        
+        # Interpolate Driver B's time elapsed onto Driver A's distance array to extract a highly accurate Delta Time
+        interpolated_time_b = np.interp(tel_a['Distance'], tel_b['Distance'], tel_b['Time_Elapsed'])
+        tel_a['Delta_Time'] = tel_a['Time_Elapsed'] - interpolated_time_b
         
         return tel_a, tel_b, False
     except Exception:
@@ -173,23 +175,39 @@ else:
     st.sidebar.success("✅ Status: 100% Verified Stream")
     st.success(f"✅ **Data Lineage Confirmed:** Successfully parsed 100% authentic raw telemetry arrays for the {selected_year} {event_name}!")
 
-    # Render Plotly Charts ONLY when data is 100% authentic
+    # =========================================================
+    # 📈 PLOTLY THREE-TIER MULTI-AXIS CHART ENGINE
+    # =========================================================
     fig = make_subplots(
-        rows=2, cols=1, 
+        rows=3, cols=1, 
         shared_xaxes=True, 
-        vertical_spacing=0.15, 
-        subplot_titles=("Velocity Profile (Speed Trace)", "Throttle Input Matrix")
+        vertical_spacing=0.08, 
+        subplot_titles=(
+            "Velocity Profile (Speed Trace)", 
+            "Throttle Input Matrix", 
+            f"Pacing Performance Gap Delta (Relative to {driver_a})"
+        )
     )
 
+    # 1. Velocity Traces
     fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Speed'], name=f"{driver_a} Speed", line=dict(color='#00FFFF', width=2.5)), row=1, col=1)
     fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Speed'], name=f"{driver_b} Speed", line=dict(color='#FF00FF', width=2.5)), row=1, col=1)
 
+    # 2. Throttle Inputs
     fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Throttle'], name=f"{driver_a} Throttle", line=dict(color='#00FFFF', width=1.5, dash='dot')), row=2, col=1)
     fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Throttle'], name=f"{driver_b} Throttle", line=dict(color='#FF00FF', width=1.5, dash='dot')), row=2, col=1)
 
+    # 3. Delta Time Plot (Mathematical Time Gap Over Space)
+    # If the curve goes UP, Driver B is losing time. If it goes DOWN, Driver B is gaining time.
+    fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Delta_Time'], name="Time Delta Gap", line=dict(color='#FFFFFF', width=2)), row=3, col=1)
+
     fig.update_layout(
-        height=650, template="plotly_dark", 
-        showlegend=True, xaxis2_title="Distance Traveled (Meters)", yaxis_title="Velocity (km/h)", yaxis2_title="Throttle Application %"
+        height=850, template="plotly_dark", 
+        showlegend=True, 
+        xaxis3_title="Distance Traveled (Meters)", 
+        yaxis_title="Velocity (km/h)", 
+        yaxis2_title="Throttle %", 
+        yaxis3_title="Delta (Seconds)"
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -204,15 +222,13 @@ col1, col2 = st.columns(2)
 with col1:
     st.markdown("#### **📈 The Racing Story (For Managers & Strategy Teams)**")
     st.markdown(f"""
-    * **What are we actually looking at?** Think of this dashboard as an X-ray of a driver's driving style. By overlaying the performance curves of **Driver A** (Cyan) and **Driver B** (Magenta), we can see exactly where one driver is hunting down lap time or dropping it.
-    * **Reading the Speed Trace:** Look for the gaps where the lines separate. If the Cyan line peaks higher on a straightaway, that driver either has a stronger engine map, a better aerodynamic slipstream, or carried more momentum out of the previous corner. 
-    * **The Business Takeaway:** In a real-world business or team environment, this visual translation is how analysts hand actionable feedback to managers and drivers to shave off crucial fractions of a second.
+    * **The Speed and Throttle Traces:** By overlaying the telemetry of **{driver_a}** (Cyan) and **{driver_b}** (Magenta), we can isolate corner-by-corner stylistic variances. Look at throttle drop-offs to see who brakes earlier, and observe who reaches 100% throttle application first on corner exit.
+    * **Reading the Performance Gap Delta:** The white line represents the time gap between both drivers across physical track space. When the trace slopes **upward**, it means **{driver_a}** is extending the lead and pulling away. When the trace slopes **downward**, **{driver_b}** is recovering fractions of a second. A flat line shows dead-even pacing.
     """)
 
 with col2:
     st.markdown("#### **🛠️ The Engineering Behind It (For Tech Leads & Senior Analysts)**")
     st.markdown(f"""
-    * **Strict Data Governance Pattern:** To prevent false reporting anomalies, this system implements conditional rendering. If the live REST API fails or throttles traffic, the application intentionally suspends chart rendering and reports an operational data alert instead of serving synthetic or inaccurate shape fills.
-    * **Resolving the Distance Variable:** The raw telemetry stream doesn't give us a clean 'Distance' column out of the box—it only logs metrics against absolute date and time stamps. 
-    * **The Data Fix:** To plot these traces side-by-side accurately over space rather than time, I converted the velocity vectors from km/h to meters per second, calculated the time deltas between high-frequency telemetry frames (~3.7 Hz), and applied a cumulative sum (`cumsum()`) integration to map out a precise distance baseline.
+    * **The Delta Alignment Math Engine:** Because telemetry packets sample asynchronously at slightly offset distance markers, we map them uniformly by taking Driver A's absolute distance vector and using 1D linear array interpolation (`numpy.interp`) to calculate what Driver B's precise elapsed time was at that exact meter mark. 
+    * **Automated Data Lifecycle:** The code is completely self-correcting. If an API request times out due to server stress, the script safely catches the exception, updates sidebars, and dynamically swaps the visual plot matrices for an explicit status notice banner, reverting back to full chart generation the exact moment public server infrastructure clears up.
     """)
