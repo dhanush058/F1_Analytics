@@ -3,8 +3,10 @@ import fastf1
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import os # Imported to physically configure disk architecture
 
-# Enable robust disk caching to maximize front-end performance
+# FIX: Force explicit OS directory instantiation to bypass folder permissions
+os.makedirs('f1_cache', exist_ok=True)
 fastf1.Cache.enable_cache('f1_cache') 
 
 st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
@@ -69,31 +71,28 @@ selected_session_code = session_mapping[selected_session_label]
 # 3. DEFENSIVE DATA-STREAM LOADING ENGINE
 # ==========================================
 @st.cache_resource(show_spinner=False)
-def load_session_safely(year, round_num, session_type):
+def load_session_safely(year, round_num, session_type, race_options_dict):
     """
     Probes, downloads, and verifies telemetry records.
-    Catches all internal FastF1 and FIA backend API errors dynamically.
+    Uses robust string-based event mapping to prevent API index shifts.
     """
-    # Bulletproof Bypass for BOTH Round 1 (Australia) and Round 3 (Japan)
-    if int(year) == 2026 and int(round_num) in [1, 3]:
+    try:
+        full_string = race_options_dict.get(int(round_num), "")
+        event_keyword = full_string.split(" (")[0].strip() if " (" in full_string else full_string
+    except Exception:
+        event_keyword = ""
+
+    if event_keyword:
         try:
-            session = fastf1.get_session(year, round_num, session_type)
+            session = fastf1.get_session(int(year), event_keyword, session_type)
             session.load(laps=True, telemetry=True, weather=False)
-            # Verify data is actually present before returning success
             if len(session.laps) > 0:
                 return session, "success"
         except Exception:
-            try:
-                event_name = "Japanese Grand Prix" if int(round_num) == 3 else "Australian Grand Prix"
-                session = fastf1.get_session(year, event_name, session_type)
-                session.load(laps=True, telemetry=True, weather=False)
-                if len(session.laps) > 0:
-                    return session, "success"
-            except Exception:
-                pass
+            pass
 
     try:
-        session = fastf1.get_session(year, round_num, session_type)
+        session = fastf1.get_session(int(year), int(round_num), session_type)
         session.load(laps=True, telemetry=True, weather=False)
         
         if len(session.laps) == 0:
@@ -107,9 +106,9 @@ def load_session_safely(year, round_num, session_type):
         else:
             return None, "unfinalized"
 
-# Execute data ingestion safely
+# Execute data ingestion safely with updated string-mapping arguments
 with st.spinner(f"Ingesting high-frequency {selected_session_label} telemetry directly from F1 servers..."):
-    session, status = load_session_safely(int(selected_year), int(selected_round), selected_session_code)
+    session, status = load_session_safely(selected_year, selected_round, selected_session_code, race_options)
 
 # ==========================================
 # 4. DYNAMIC FRONT-END ROUTING & INTERACTION
@@ -279,8 +278,6 @@ elif status == "success" and session is not None:
                         * **Flat Line (➖):** Both drivers are executing identical pacing through that specific stretch of tarmac.
                     """)
     except Exception as render_err:
-        # In Streamlit, st.stop() raises a base exception to halt scripts. 
-        # We pass it through cleanly so it doesn't trigger our fallback error layout.
         if "StopException" in type(render_err).__name__:
             pass
         else:
