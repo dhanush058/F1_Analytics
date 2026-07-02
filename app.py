@@ -3,20 +3,29 @@ import fastf1
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import os # Imported to physically configure disk architecture
+import os
 
-# FIX: Force explicit OS directory instantiation to bypass folder permissions
+# Force explicit directory initialization to bypass hosting permissions
 os.makedirs('f1_cache', exist_ok=True)
 fastf1.Cache.enable_cache('f1_cache') 
 
 st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
 st.title("🏎️ F1 Spatial Telemetry Performance Analyzer")
+
+# ==========================================
+# CACHE PURGE BUTTON (THE RESET SWITCH)
+# ==========================================
+if st.button("🔄 Clear System Cache & Force API Reload"):
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.success("System memory purged! Recalculating with a fresh live server request...")
+
 st.markdown("---")
 
 # ==========================================
 # 1. DYNAMIC CALENDAR INGESTION ENGINE
 # ==========================================
-@st.cache_data(ttl=86400) # Refreshes once a day automatically
+@st.cache_data(ttl=86400)
 def fetch_bulletproof_schedule(year):
     """
     Dynamically pulls the official schedule from FastF1 servers to
@@ -68,13 +77,13 @@ selected_session_label = st.sidebar.selectbox("Select Session Type", list(sessio
 selected_session_code = session_mapping[selected_session_label]
 
 # ==========================================
-# 3. DEFENSIVE DATA-STREAM LOADING ENGINE
+# 3. DIAGNOSTIC DATA-STREAM LOADING ENGINE
 # ==========================================
 @st.cache_resource(show_spinner=False)
 def load_session_safely(year, round_num, session_type, race_options_dict):
     """
     Probes, downloads, and verifies telemetry records.
-    Uses robust string-based event mapping to prevent API index shifts.
+    Exposes the raw exception string to identify global system blocks.
     """
     try:
         full_string = race_options_dict.get(int(round_num), "")
@@ -82,14 +91,16 @@ def load_session_safely(year, round_num, session_type, race_options_dict):
     except Exception:
         event_keyword = ""
 
+    last_error_observed = "Unknown connection anomaly."
+
     if event_keyword:
         try:
             session = fastf1.get_session(int(year), event_keyword, session_type)
             session.load(laps=True, telemetry=True, weather=False)
             if len(session.laps) > 0:
                 return session, "success"
-        except Exception:
-            pass
+        except Exception as e:
+            last_error_observed = str(e)
 
     try:
         session = fastf1.get_session(int(year), int(round_num), session_type)
@@ -104,7 +115,7 @@ def load_session_safely(year, round_num, session_type, race_options_dict):
         if "not yet occurred" in error_msg or "upcoming" in error_msg or "future" in error_msg:
             return None, "upcoming"
         else:
-            return None, "unfinalized"
+            return None, f"SYSTEM_ERROR: {str(e)} | Keyword Error: {last_error_observed}"
 
 # Execute data ingestion safely with updated string-mapping arguments
 with st.spinner(f"Ingesting high-frequency {selected_session_label} telemetry directly from F1 servers..."):
@@ -116,8 +127,10 @@ with st.spinner(f"Ingesting high-frequency {selected_session_label} telemetry di
 if status == "upcoming":
     st.info(f"🏁 **Round {selected_round}: {race_options[selected_round]} ({selected_session_label})** has either not occurred yet or is currently live. Telemetry insights will generate immediately following official session finalization.")
 
-elif status == "unfinalized" or status == "empty_session":
-    st.warning(f"⚠️ Telemetry logs for **Round {selected_round} ({selected_session_label})** are currently unfinalized or undergoing synchronization on the FIA servers. Please select a fully completed session.")
+elif status == "unfinalized" or status == "empty_session" or "SYSTEM_ERROR" in str(status):
+    st.warning(f"⚠️ Telemetry logs for **Round {selected_round} ({selected_session_label})** could not be loaded.")
+    st.code(f"Raw Diagnostic Output: {status}", language="text")
+    st.info("💡 Copy the raw diagnostic text above so we can identify exactly what is blocking your local environment setup.")
 
 elif status == "success" and session is not None:
     try:
