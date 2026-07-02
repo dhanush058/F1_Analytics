@@ -10,8 +10,9 @@ from plotly.subplots import make_subplots
 # =========================================================
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_api_json(url):
+    """Queries public REST endpoints with strict timeout constraints."""
     try:
-        response = requests.get(url, timeout=12)
+        response = requests.get(url, timeout=5)
         if response.status_code == 200:
             return response.json()
     except Exception:
@@ -19,12 +20,12 @@ def fetch_api_json(url):
     return None
 
 # =========================================================
-# 🏎️ THE ORIGINAL UI CONFIGURATION
+# 🏎️ THE ORIGINAL UI CONFIGURATION (24 GRAND PRIX CALENDAR)
 # =========================================================
 st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
 st.title("🏎️ F1 Spatial Telemetry Performance Analyzer")
 
-selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=2) # Default to 2024 for stable testing history
+selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=0)
 
 race_options = {
     1: "Bahrain Grand Prix", 2: "Saudi Arabian Grand Prix", 3: "Australian Grand Prix",
@@ -71,7 +72,6 @@ if not is_cancelled_2026:
                 matched_session = s
                 break
         if not matched_session and len(sessions) > 0:
-            # Secondary fallback index match if name string spacing shifts
             matched_session = sessions[0]
             
         if matched_session:
@@ -88,54 +88,49 @@ if not is_cancelled_2026:
                 if driver_map:
                     is_simulated = False
 
-# =========================================================
-# ORIGINAL DRIVER MENUS & SIDEBAR
-# =========================================================
+# Driver Selection Sidebars
 if not is_simulated and driver_map:
-    st.sidebar.success("✅ **Data Lineage:** Authenticated API Stream Match")
     drivers = sorted(list(driver_map.keys()))
 else:
-    st.sidebar.info("ℹ️ **Data Lineage:** Simulation Fail-Safe Engaged")
     drivers = ["VER", "HAM", "NOR", "LEC", "RUS", "PIA"]
 
 driver_a = st.sidebar.selectbox("Select Driver A", drivers, index=0)
 driver_b = st.sidebar.selectbox("Select Driver B", drivers, index=1 if len(drivers) > 1 else 0)
 
 # =========================================================
-# 📊 SPATIAL TELEMETRY PIPELINE EXTRACTION
+# 📊 DATA-VALIDATED TELEMETRY EXTRACTION ENGINE
 # =========================================================
-@st.cache_data(ttl=3600, show_spinner="Extracting high-frequency telemetry grid...")
+@st.cache_data(ttl=3600, show_spinner="Querying telemetry pipeline matrix...")
 def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
-    # Static distinct shape profiles used purely for cancelled or future race weekends
-    angles = np.linspace(0, 4 * np.pi, 400)
-    mock_a = pd.DataFrame({'Speed': 210 + np.sin(angles) * 65, 'Throttle': 55 + np.sin(angles) * 40, 'Distance': np.linspace(0, 5000, 400)})
-    mock_b = pd.DataFrame({'Speed': 205 + np.sin(angles + 0.08) * 68, 'Throttle': 52 + np.sin(angles + 0.08) * 42, 'Distance': np.linspace(0, 5000, 400)})
-
+    """
+    Attempts to pull live telemetry streams from OpenF1.
+    If the API logs time out or fail, returns None to guarantee strict data integrity.
+    """
     if fallback_active or not s_key or not d_map or d_a not in d_map or d_b not in d_map:
-        return mock_a, mock_b, True
+        return None, None, True
 
     try:
         num_a = d_map[d_a]
         num_b = d_map[d_b]
         
-        # Step 1: Query Lap 2 time bounds to drastically reduce data payloads and bypass API constraints
+        # Pull Lap 2 metrics to stay safely under data payload constraints
         lap_url_a = f"https://api.openf1.org/v1/laps?session_key={int(s_key)}&driver_number={int(num_a)}&lap_number=2"
-        lap_data_a = requests.get(lap_url_a, timeout=10).json()
+        lap_data = requests.get(lap_url_a, timeout=4).json()
         
-        if not lap_data_a:
-            return mock_a, mock_b, True
+        if not lap_data:
+            return None, None, True
             
-        start_time = lap_data_a[0]['date_start']
+        start_time = lap_data[0]['date_start']
         
-        # Step 2: Request car arrays explicitly filtered by the lap timestamp window
+        # Query high-frequency spatial records
         url_a = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_a)}&date>={start_time}"
-        res_a = requests.get(url_a, timeout=12).json()
+        res_a = requests.get(url_a, timeout=5).json()
         
         url_b = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_b)}&date>={start_time}"
-        res_b = requests.get(url_b, timeout=12).json()
+        res_b = requests.get(url_b, timeout=5).json()
         
         if not res_a or not res_b or len(res_a) < 20 or len(res_b) < 20:
-            return mock_a, mock_b, True
+            return None, None, True
             
         # Parse arrays dynamically for Driver A
         df_a = pd.DataFrame(res_a).head(350)
@@ -157,46 +152,46 @@ def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
         
         return tel_a, tel_b, False
     except Exception:
-        return mock_a, mock_b, True
+        return None, None, True
 
 # Run data calculations
 force_fallback = is_simulated or is_cancelled_2026
 telemetry_a, telemetry_b, data_is_fallback = fetch_telemetry_dataframe(session_key, driver_map, driver_a, driver_b, force_fallback)
 
 # =========================================================
-# 📈 TRANSPARENT DATA ANNOUNCEMENT BANNERS
+# 📊 CONDITIONAL RENDERING LAYER (DATA GOVERNANCE CHECK)
 # =========================================================
 if is_cancelled_2026:
-    st.warning(f"⚠️ **Data Integrity Notice:** The 2026 {event_name} was officially cancelled by the FIA. The charts below show a structural calibration baseline.")
-elif data_is_fallback:
-    st.info(f"📊 **Data Integrity Notice:** Telemetry streams for {selected_year} {event_name} are processing or uncompleted. Displaying calibration baseline traces.")
+    st.sidebar.error("🚨 Status: Race Cancelled")
+    st.error(f"❌ **Data Governance Error:** The 2026 {event_name} was officially cancelled by the FIA. No historical vehicle sensor data exists for this event.")
+    
+elif data_is_fallback or telemetry_a is None:
+    st.sidebar.warning("⚠️ Status: API Throttled/Empty")
+    st.info(f"📋 **Data Lineage Notice:** The live OpenF1 API endpoint is currently unresponsive or throttling traffic. To protect data integrity, chart generation is suspended until an authentic stream connection settles.")
+
 else:
+    st.sidebar.success("✅ Status: 100% Verified Stream")
     st.success(f"✅ **Data Lineage Confirmed:** Successfully parsed 100% authentic raw telemetry arrays for the {selected_year} {event_name}!")
 
-# =========================================================
-# 📈 PLOTLY RENDERING LAYER
-# =========================================================
-label_prefix = "[SIMULATED] " if data_is_fallback else ""
+    # Render Plotly Charts ONLY when data is 100% authentic
+    fig = make_subplots(
+        rows=2, cols=1, 
+        shared_xaxes=True, 
+        vertical_spacing=0.15, 
+        subplot_titles=("Velocity Profile (Speed Trace)", "Throttle Input Matrix")
+    )
 
-fig = make_subplots(
-    rows=2, cols=1, 
-    shared_xaxes=True, 
-    vertical_spacing=0.15, 
-    subplot_titles=(f"{label_prefix}Velocity Profile (Speed Trace)", f"{label_prefix}Throttle Input Matrix")
-)
+    fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Speed'], name=f"{driver_a} Speed", line=dict(color='#00FFFF', width=2.5)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Speed'], name=f"{driver_b} Speed", line=dict(color='#FF00FF', width=2.5)), row=1, col=1)
 
-fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Speed'], name=f"{label_prefix}{driver_a} Speed", line=dict(color='#00FFFF', width=2.5)), row=1, col=1)
-fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Speed'], name=f"{label_prefix}{driver_b} Speed", line=dict(color='#FF00FF', width=2.5)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Throttle'], name=f"{driver_a} Throttle", line=dict(color='#00FFFF', width=1.5, dash='dot')), row=2, col=1)
+    fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Throttle'], name=f"{driver_b} Throttle", line=dict(color='#FF00FF', width=1.5, dash='dot')), row=2, col=1)
 
-fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Throttle'], name=f"{label_prefix}{driver_a} Throttle", line=dict(color='#00FFFF', width=1.5, dash='dot')), row=2, col=1)
-fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Throttle'], name=f"{label_prefix}{driver_b} Throttle", line=dict(color='#FF00FF', width=1.5, dash='dot')), row=2, col=1)
-
-fig.update_layout(
-    height=650, template="plotly_dark", 
-    title_text=f"{label_prefix}Telemetry Comparison Profile: {event_name} ({selected_year})", 
-    showlegend=True, xaxis2_title="Distance Traveled (Meters)", yaxis_title="Velocity (km/h)", yaxis2_title="Throttle Application %"
-)
-st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(
+        height=650, template="plotly_dark", 
+        showlegend=True, xaxis2_title="Distance Traveled (Meters)", yaxis_title="Velocity (km/h)", yaxis2_title="Throttle Application %"
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 # =========================================================
 # 📘 HUMANIZED DATA ANALYST PERFORMANCE & ARCHITECTURE GUIDE
@@ -209,17 +204,15 @@ col1, col2 = st.columns(2)
 with col1:
     st.markdown("#### **📈 The Racing Story (For Managers & Strategy Teams)**")
     st.markdown(f"""
-    * **What are we actually looking at?** Think of this dashboard as an X-ray of a driver's driving style. By overlaying the performance curves of **{driver_a}** (Cyan) and **{driver_b}** (Magenta), we can see exactly where one driver is hunting down lap time or dropping it.
-    * **Reading the Speed Trace:** Look for the gaps where the lines separate. If the Cyan line peaks higher on a straightaway, **{driver_a}** either has a stronger engine map, a better aerodynamic slipstream, or carried more momentum out of the previous corner. 
-    * **Decoding the Gas Pedal (Throttle Matrix):** Every time you see these lines plunge off a cliff toward 0%, that is a driver slamming on the brakes for a corner apex. Who rolls back onto the throttle first? Who is more aggressive? The faster driver isn't always the one with the highest top speed—it's usually the one who balances these inputs smoothly.
+    * **What are we actually looking at?** Think of this dashboard as an X-ray of a driver's driving style. By overlaying the performance curves of **Driver A** (Cyan) and **Driver B** (Magenta), we can see exactly where one driver is hunting down lap time or dropping it.
+    * **Reading the Speed Trace:** Look for the gaps where the lines separate. If the Cyan line peaks higher on a straightaway, that driver either has a stronger engine map, a better aerodynamic slipstream, or carried more momentum out of the previous corner. 
     * **The Business Takeaway:** In a real-world business or team environment, this visual translation is how analysts hand actionable feedback to managers and drivers to shave off crucial fractions of a second.
     """)
 
 with col2:
     st.markdown("#### **🛠️ The Engineering Behind It (For Tech Leads & Senior Analysts)**")
     st.markdown(f"""
-    * **Bypassing the Cloud Hosting Block:** Most public cloud servers (like Streamlit Cloud) are permanently firewalled by major sports networks to protect live timing streams. Instead of giving up or manually uploading CSVs every week, I mapped this pipeline directly to an unblocked REST endpoint, allowing the app to fetch data completely hands-free.
+    * **Strict Data Governance Pattern:** To prevent false reporting anomalies, this system implements conditional rendering. If the live REST API fails or throttles traffic, the application intentionally suspends chart rendering and reports an operational data alert instead of serving synthetic or inaccurate shape fills.
     * **Resolving the Distance Variable:** The raw telemetry stream doesn't give us a clean 'Distance' column out of the box—it only logs metrics against absolute date and time stamps. 
     * **The Data Fix:** To plot these traces side-by-side accurately over space rather than time, I converted the velocity vectors from km/h to meters per second, calculated the time deltas between high-frequency telemetry frames (~3.7 Hz), and applied a cumulative sum (`cumsum()`) integration to map out a precise distance baseline.
-    * **Defensive Error Handling:** Data breaks in production. By engineering an automatic schema-matching fallback layer, the application catches missing or cancelled race packets (like the cancelled 2026 rounds) and cleanly generates baseline profiles, keeping the user interface up and functional 100% of the time.
     """)
