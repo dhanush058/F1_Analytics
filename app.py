@@ -164,21 +164,44 @@ force_fallback = is_simulated or is_cancelled_2026 or demo_mode
 telemetry_a, telemetry_b, data_is_fallback = fetch_telemetry_dataframe(session_key, driver_map, driver_a, driver_b, force_fallback)
 
 # =========================================================
-# ⚙️ ON-DEMAND RECIPROCATING HIGH-FIDELITY SIMULATOR
+# ⚙️ ON-DEMAND PSEUDO-RANDOM HIGH-FIDELITY SIMULATOR
 # =========================================================
 if (data_is_fallback or telemetry_a is None) and demo_mode:
     data_is_fallback = False  
-    st.sidebar.info("🖥️ Status: Interactive Demo Core Active")
-    st.info("💡 **Portfolio Demo Mode Active:** Showing a high-fidelity spatial trace approximation of a typical racing lap to showcase visualization rendering architecture during public API rate-limiting periods.")
+    st.sidebar.info("🖥️ Status: Smart Demo Core Active")
+    st.info(f"💡 **Portfolio Demo Mode Active:** Generating a unique, deterministic spatial trace for the {event_name} using isolated local calculus.")
     
-    dist_baseline = np.linspace(0, 5200, 450)
-    speed_a = 280 - 90 * np.abs(np.sin(dist_baseline / 300)) - 40 * np.abs(np.cos(dist_baseline / 800))
-    speed_b = speed_a + (np.sin(dist_baseline / 150) * 4.5)
+    # Use the selected round number as a seed so different tracks look completely different
+    np.random.seed(int(selected_round))
     
-    throttle_a = np.clip(100 - np.abs(np.cos(dist_baseline / 300)) * 110, 0, 100)
-    throttle_b = np.clip(100 - np.abs(np.cos((dist_baseline + 30) / 300)) * 105, 0, 100)
+    # Dynamically alter circuit characteristics based on selection configurations
+    track_length = 4200 + (selected_round * 95)  # Varied lap layout space
+    num_corners = 6 + (selected_round % 10)       # Number of braking interventions
     
-    delta_time = np.sin(dist_baseline / 600) * 0.35 - (dist_baseline / 5200) * 0.15
+    dist_baseline = np.linspace(0, track_length, 450)
+    
+    # Calculate track velocity profile geometry
+    speed_base = 275.0
+    for i in range(num_corners):
+        # Generate predictable, fixed apex locations unique to this round index
+        corner_pos = (track_length / (num_corners + 1)) * (i + 1) + np.random.uniform(-120, 120)
+        # Apply gaussian distributions to mimic deceleration pockets
+        speed_base -= 95 * np.exp(-((dist_baseline - corner_pos) / 240)**2)
+    
+    # Apply unique deterministic seeds to isolate driver micro-behaviors safely
+    np.random.seed(hash(driver_a) % 10000)
+    speed_a = np.clip(speed_base + np.random.normal(0, 1.8, len(dist_baseline)), 65, 335)
+    throttle_a = np.clip(100 - (295 - speed_a) * 1.05 + np.random.normal(0, 2.5, len(dist_baseline)), 0, 100)
+    
+    np.random.seed(hash(driver_b) % 10000)
+    # Generate spatial stylistic offsets for comparison driver
+    speed_b = np.clip(speed_base + np.random.normal(0.8, 2.2, len(dist_baseline)) + (np.sin(dist_baseline / 180) * 3.5), 65, 335)
+    throttle_b = np.clip(100 - (295 - speed_b) * 1.02 + np.random.normal(0, 2.5, len(dist_baseline)), 0, 100)
+    
+    # Re-integrate velocity scalars back into pacing delta timelines
+    time_a = np.cumsum(1 / (np.maximum(speed_a, 10) / 3.6)) * (track_length / len(dist_baseline))
+    time_b = np.cumsum(1 / (np.maximum(speed_b, 10) / 3.6)) * (track_length / len(dist_baseline))
+    delta_time = (time_a - time_b) * 0.12  # Clean scaling factor for realistic visual gaps
     
     telemetry_a = pd.DataFrame({'Distance': dist_baseline, 'Speed': speed_a, 'Throttle': throttle_a, 'Delta_Time': delta_time})
     telemetry_b = pd.DataFrame({'Distance': dist_baseline, 'Speed': speed_b, 'Throttle': throttle_b})
@@ -215,7 +238,7 @@ else:
         )
     )
 
-    # 1. Velocity Traces - Thick Solid Neon
+    # 1. Velocity Traces - Thick Solid Neon Cyberpunk Styling
     fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Speed'], name=f"{driver_a} Speed", line=dict(color='#00FFFF', width=3)), row=1, col=1) 
     fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Speed'], name=f"{driver_b} Speed", line=dict(color='#FF00FF', width=3)), row=1, col=1) 
 
@@ -223,10 +246,10 @@ else:
     fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Throttle'], name=f"{driver_a} Throttle", line=dict(color='#00FFFF', width=1.5, dash='longdash')), row=2, col=1)
     fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Throttle'], name=f"{driver_b} Throttle", line=dict(color='#FF00FF', width=1.5, dash='longdash')), row=2, col=1)
 
-    # 3. Delta Time Plot - Neon Laser Green Line
+    # 3. Delta Time Plot - Neon Laser Green Analytics Profile
     fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Delta_Time'], name="Time Delta Gap", line=dict(color='#00FF66', width=2.5)), row=3, col=1) 
 
-    # Layout formatting constraints
+    # Strict dark canvas layout formatting
     fig.update_layout(
         height=850, 
         template="plotly_dark", 
@@ -239,7 +262,7 @@ else:
         yaxis3_title="Delta (Seconds)"
     )
     
-    # Grid lines aesthetic configuration
+    # Technical layout grid line variables
     fig.update_xaxes(gridcolor='#222933', zerolinecolor='#444d56')
     fig.update_yaxes(gridcolor='#222933', zerolinecolor='#444d56')
     
@@ -251,7 +274,6 @@ else:
 st.markdown("---")
 st.markdown("## 📊 System Engineering & Telemetry Analysis Field Manual")
 
-# Constructing side-by-side executive summaries using native layout columns
 left_col, right_col = st.columns(2)
 
 with left_col:
@@ -297,7 +319,6 @@ with math_col:
 with table_col:
     st.markdown("#### **Pipeline Component Governance Framework**")
     
-    # Explicitly structured Pandas framework documentation table
     governance_matrix = {
         "Subsystem Matrix": ["Inbound Extraction Engine", "Spatial Processing Core", "Subplot Visual Layer"],
         "Functional Governance Protocol": [
