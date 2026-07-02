@@ -246,23 +246,69 @@ else:
     st.plotly_chart(fig, use_container_width=True)
 
 # =========================================================
-# 📘 HUMANIZED DATA ANALYST PERFORMANCE & ARCHITECTURE GUIDE
+# 📘 COMPREHENSIVE STREAMLIT TYPOGRAPHIC DOC GUIDE
 # =========================================================
 st.markdown("---")
-st.markdown("### 📊 Field Notes: Telemetry Analysis & Architecture Breakdown")
+st.markdown("## 📊 System Engineering & Telemetry Analysis Field Manual")
 
-col1, col2 = st.columns(2)
+# Constructing side-by-side executive summaries using native layout columns
+left_col, right_col = st.columns(2)
 
-with col1:
-    st.markdown("#### **📈 The Racing Story (For Managers & Strategy Teams)**")
+with left_col:
+    st.success("### 📈 Tactical Racing Analysis (For Executive Teams)")
     st.markdown(f"""
-    * **The Speed and Throttle Traces:** By overlaying the telemetry of **Driver A** (Cyan) and **Driver B** (Magenta), we can isolate corner-by-corner stylistic variances. Look at throttle drop-offs to see who brakes earlier, and observe who reaches 100% throttle application first on corner exit.
-    * **Reading the Performance Gap Delta:** The neon green line represents the time gap between both drivers across physical track space. When the trace slopes **upward**, it means Driver A is extending the lead and pulling away. When the trace slopes **downward**, Driver B is recovering fractions of a second. A flat line shows dead-even pacing.
+    This visualization matrix provides a non-destructive audit of competitor behavior by projecting high-frequency vehicle channels over fixed track distances. By evaluating the performance boundary layers between **{driver_a}** and **{driver_b}**, team strategists can target explicit driving variances.
+    
+    * **The Speed Trace Curves:** Parallel lines on straightaways highlight straightline aerodynamic efficiency, drag limits, and battery deployment strategies. Sudden divergence in slopes entering a corner highlights a delta in braking threshold aggression.
+    * **The Throttle Profiles:** Gradual stepped trace steps indicate aerodynamic stabilization or lift-and-coast fuel saving techniques. Sharp vertical steps profile excellent vehicle traction control profiles on apex exit lines.
+    * **The Performance Delta Line:** The laser-green profile tracks absolute time differences down to the individual meter. An ascending trend indicates the baseline car (**{driver_a}**) is actively pulling away; a descending trend indicates the comparison car (**{driver_b}**) is recovering the deficit.
     """)
 
-with col2:
-    st.markdown("#### **🛠️ The Engineering Behind It (For Tech Leads & Senior Analysts)**")
-    st.markdown(f"""
-    * **Strict Data Governance Pattern:** To prevent false reporting anomalies, this system implements conditional rendering. If the live REST API fails or throttles traffic, the application intentionally suspends chart rendering and reports an operational data alert instead of serving unverified data loops under a live tag.
-    * **The Fail-Safe Mock Framework:** To protect end-user portfolio engagement during network outrages, an interactive Demo Mode toggle leverages non-linear composite waves to approximate racing curves, maintaining visual completeness without sacrificing structural honesty.
+with right_col:
+    st.info("### 🏗️ Pipeline Architecture (For Engineering Leads)")
+    st.markdown("""
+    This platform acts as an isolated data transformation layer designed to eliminate client-side connectivity overhead while strictly validating data lineage boundaries at runtime.
+    
+    * **The Asynchronous Interface Block:** Free public API structures implement severe request thresholds. This application implements local fallback matrices, cleanly hiding layout canvases and reporting line notices rather than passing unverified variables or letting the frontend crash.
+    * **The Interactive Demo Sandbox:** To preserve portfolio interaction when external networks drop, an custom mock layer applies interlocking sinusoidal component formulas to synthesize realistic track inputs, verifying engine execution models safely.
+    * **Absolute Distance Projection:** Raw CAN bus networks log metrics strictly against timestamps (`date`). To render metrics relative to circuit position, the pipeline converts velocity vectors and applies a rolling Riemann tracking sum.
     """)
+
+# Math & Data Governance Deep-Dive Section
+st.markdown("---")
+st.markdown("### 🧮 Data Lineage Calculus & System Validation Matrix")
+
+math_col, table_col = st.columns([4, 5])
+
+with math_col:
+    st.markdown("#### **Spatial Normalization Equations**")
+    st.markdown("Converting raw velocity values into international metric coordinates:")
+    st.latex(r"v_{m/s} = \frac{v_{km/h}}{3.6}")
+    
+    st.markdown("Calculating chronological slice deltas across sampling frequencies (~3.7 Hz):")
+    st.latex(r"\Delta t_i = t_i - t_{i-1}")
+    
+    st.markdown("Applying rolling numerical integration to construct the absolute track distance baseline:")
+    st.latex(r"d_n = \sum_{i=1}^{n} \left( v_{m/s, i} \times \Delta t_i \right)")
+    
+    st.markdown("Aligning temporal arrays via 1D linear interpolation to resolve spatial offsets:")
+    st.latex(r"t_{B, \text{interp}} = \text{Interpolate}(d_A, d_B, t_B) \implies \Delta t_n = t_{A, n} - t_{B, \text{interp}, n}")
+
+with table_col:
+    st.markdown("#### **Pipeline Component Governance Framework**")
+    
+    # Explicitly structured Pandas framework documentation table
+    governance_matrix = {
+        "Subsystem Matrix": ["Inbound Extraction Engine", "Spatial Processing Core", "Subplot Visual Layer"],
+        "Functional Governance Protocol": [
+            "REST JSON Polling with 5-second connection constraints",
+            "NumPy Vector Alignment & 1D Array Interpolation",
+            "Conditional Plotly Dark-Canvas Context Handlers"
+        ],
+        "Exception Isolation Strategy": [
+            "Intercept network failures and pass clean lineage states",
+            "Enforce strict coordinate sorting to drop skew anomalies",
+            "Drop charts dynamically and deploy interactive Demo Toggles"
+        ]
+    }
+    st.table(pd.DataFrame(governance_matrix))
