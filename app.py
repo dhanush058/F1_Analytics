@@ -8,12 +8,10 @@ from plotly.subplots import make_subplots
 # =========================================================
 # 🛡️ SYSTEM STORAGE CACHE LAYERS
 # =========================================================
-# Set up a lightweight container cache so your dashboard loads instantly 
-# for recruiters rather than querying the live database on every single refresh.
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_api_json(url):
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=12)
         if response.status_code == 200:
             return response.json()
     except Exception:
@@ -26,7 +24,8 @@ def fetch_api_json(url):
 st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
 st.title("🏎️ F1 Spatial Telemetry Performance Analyzer")
 
-selected_year = 2026
+selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=0)
+
 race_options = {
     1: "Australian Grand Prix",
     2: "Chinese Grand Prix",
@@ -45,7 +44,6 @@ selected_round = st.sidebar.selectbox(
     format_func=lambda x: f"Round {x}: {race_options[x]}"
 )
 
-# Map the dropdown selections cleanly to OpenF1's backend search terminology
 location_map = {
     "Australian Grand Prix": "Melbourne",
     "Chinese Grand Prix": "Shanghai",
@@ -62,7 +60,6 @@ target_location = location_map[race_options[selected_round]]
 # =========================================================
 # 🌐 FIREWALL-FREE OPENF1 SESSION & DRIVER RESOLVER
 # =========================================================
-# We look up the raw internal tracking indices for any session across 2024-2026
 session_url = f"https://api.openf1.org/v1/sessions?year={selected_year}"
 sessions = fetch_api_json(session_url)
 
@@ -72,19 +69,17 @@ is_simulated = True
 event_name = race_options[selected_round]
 
 if sessions:
-    # Scan OpenF1 text arrays to match our current selected UI dropdown track location
     matched_session = None
     for s in sessions:
         if target_location.lower() in str(s.get('location', '')).lower():
-            # OpenF1 labels competitive Sunday grid runs as 'Race' or 'Grand Prix'
-            if "race" in str(s.get('session_name', '')).lower() or "grand prix" in str(s.get('session_name', '')).lower():
+            name_str = str(s.get('session_name', '')).lower()
+            if "race" in name_str or "grand prix" in name_str:
                 matched_session = s
                 break
                 
     if matched_session:
         session_key = matched_session.get('session_key')
         
-        # Pull the absolute driver acronyms and matching car numbers assigned to this track session
         driver_url = f"https://api.openf1.org/v1/drivers?session_key={session_key}"
         drivers_data = fetch_api_json(driver_url)
         
@@ -115,22 +110,17 @@ driver_b = st.sidebar.selectbox("Select Driver B", drivers, index=1 if len(drive
 # =========================================================
 @st.cache_data(ttl=3600, show_spinner="Extracting high-frequency telemetry grid...")
 def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b):
-    """
-    Downloads high-frequency velocity channels for selected drivers.
-    If the network connection returns empty arrays, it populates structurally
-    sound parameters so your charts never display broken flat lines.
-    """
-    # Fallback/Placeholder generator to keep the page completely alive if a future race is selected
+    # Highly realistic mathematical baseline curves if a future race weekend is selected
     angles = np.linspace(0, 4 * np.pi, 600)
     mock_a = pd.DataFrame({
-        'Speed': 200 + np.sin(angles) * 70 + np.random.normal(0, 2, 600),
-        'Throttle': 50 + np.sin(angles) * 45,
-        'Distance': np.linspace(0, 5200, 600)
+        'Speed': 210 + np.sin(angles) * 65 + np.random.normal(0, 1.5, 600),
+        'Throttle': 55 + np.sin(angles) * 40,
+        'Distance': np.linspace(0, 5300, 600)
     })
     mock_b = pd.DataFrame({
-        'Speed': 195 + np.sin(angles + 0.1) * 72 + np.random.normal(0, 2, 600),
-        'Throttle': 48 + np.sin(angles + 0.1) * 47,
-        'Distance': np.linspace(0, 5200, 600)
+        'Speed': 205 + np.sin(angles + 0.08) * 68 + np.random.normal(0, 1.5, 600),
+        'Throttle': 52 + np.sin(angles + 0.08) * 42,
+        'Distance': np.linspace(0, 5300, 600)
     })
 
     if not s_key or not d_map or d_a not in d_map or d_b not in d_map:
@@ -140,42 +130,46 @@ def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b):
         num_a = d_map[d_a]
         num_b = d_map[d_b]
         
-        # Querying unblocked streaming channels for Driver A
+        # Load Driver A raw telemetry packets
         url_a = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_a)}"
         res_a = requests.get(url_a, timeout=12).json()
         
-        # Querying unblocked streaming channels for Driver B
+        # Load Driver B raw telemetry packets
         url_b = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_b)}"
         res_b = requests.get(url_b, timeout=12).json()
         
-        if not res_a or not res_b or len(res_a) < 50 or len(res_b) < 50:
+        if not res_a or not res_b or len(res_a) < 20 or len(res_b) < 20:
             return mock_a, mock_b, True
             
-        # Parse data frames for Driver A
-        df_a = pd.DataFrame(res_a).head(1000)
+        # Parse arrays for Driver A cleanly over internal timestamps
+        df_a = pd.DataFrame(res_a).slice_shift(0).head(700) if hasattr(pd.DataFrame(res_a), 'slice_shift') else pd.DataFrame(res_a).head(700)
         tel_a = pd.DataFrame()
         tel_a['Speed'] = df_a['speed'].astype(float)
-        tel_a['Throttle'] = df_a['throttle'].astype(float) if 'throttle' in df_a.columns else 80.0
-        tel_a['Distance'] = np.arange(len(df_a)) * 5
-        
-        # Parse data frames for Driver B
-        df_b = pd.DataFrame(res_b).head(1000)
+        tel_a['Throttle'] = df_a['throttle'].astype(float) if 'throttle' in df_a.columns else 90.0
+        # Calculate dynamic spatial distances using variable delta integrations over time
+        df_a['date'] = pd.to_datetime(df_a['date'])
+        time_deltas = df_a['date'].diff().dt.total_seconds().fillna(0.27)
+        tel_a['Distance'] = (tel_a['Speed'] / 3.6 * time_deltas).cumsum()
+
+        # Parse arrays for Driver B cleanly over internal timestamps
+        df_b = pd.DataFrame(res_b).head(700)
         tel_b = pd.DataFrame()
         tel_b['Speed'] = df_b['speed'].astype(float)
-        tel_b['Throttle'] = df_b['throttle'].astype(float) if 'throttle' in df_b.columns else 78.0
-        tel_b['Distance'] = np.arange(len(df_b)) * 5
+        tel_b['Throttle'] = df_b['throttle'].astype(float) if 'throttle' in df_b.columns else 88.0
+        df_b['date'] = pd.to_datetime(df_b['date'])
+        time_deltas_b = df_b['date'].diff().dt.total_seconds().fillna(0.27)
+        tel_b['Distance'] = (tel_b['Speed'] / 3.6 * time_deltas_b).cumsum()
         
         return tel_a, tel_b, False
     except Exception:
         return mock_a, mock_b, True
 
-# Run the ingestion matrix pipeline
+# Run data arrays processing
 telemetry_a, telemetry_b, data_is_fallback = fetch_telemetry_dataframe(session_key, driver_map, driver_a, driver_b)
 
 # =========================================================
 # 📈 COMPOSITE PLOTLY VISUALIZATION FRAMEWORKS
 # =========================================================
-# Restores your multi-layer subplots tracking velocity grids perfectly
 fig = make_subplots(
     rows=2, cols=1, 
     shared_xaxes=True, 
@@ -191,24 +185,21 @@ fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Speed'], name
 fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Throttle'], name=f"{driver_a} Throttle", line=dict(color='#00FFFF', width=1.5, dash='dot')), row=2, col=1)
 fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Throttle'], name=f"{driver_b} Throttle", line=dict(color='#FF00FF', width=1.5, dash='dot')), row=2, col=1)
 
-# Style configuration layout
 fig.update_layout(
     height=650, 
     template="plotly_dark", 
     title_text=f"Telemetry Comparison Profile: {event_name} ({selected_year})", 
     showlegend=True,
-    xaxis2_title="Distance (Meters)",
-    yaxis_title="Speed (km/h)",
-    yaxis2_title="Throttle %"
+    xaxis2_title="Distance Traveled (Meters)",
+    yaxis_title="Velocity (km/h)",
+    yaxis2_title="Throttle Application %"
 )
 
-# Render the layout window immediately onto your Streamlit application page
 st.plotly_chart(fig, use_container_width=True)
 
 # =========================================================
 # 📘 COMPREHENSIVE DATA ANALYST DOCUMENTATION GUIDE
 # =========================================================
-# Fully restored section giving you the exact talking points needed for job calls
 st.markdown("---")
 st.markdown("### 📊 Data Analyst Performance & Architecture Guide")
 
