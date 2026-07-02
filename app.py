@@ -74,14 +74,23 @@ def load_session_safely(year, round_num, session_type):
     Probes, downloads, and verifies telemetry records.
     Catches all internal FastF1 and FIA backend API errors dynamically.
     """
-    # Bulletproof Bypass for 2026 Round 1 Australia to clear the warning banner permanently
-    if int(year) == 2026 and int(round_num) == 1:
+    # Bulletproof Bypass for BOTH Round 1 (Australia) and Round 3 (Japan)
+    if int(year) == 2026 and int(round_num) in [1, 3]:
         try:
             session = fastf1.get_session(year, round_num, session_type)
             session.load(laps=True, telemetry=True, weather=False)
-            return session, "success"
+            # Verify data is actually present before returning success
+            if len(session.laps) > 0:
+                return session, "success"
         except Exception:
-            pass
+            try:
+                event_name = "Japanese Grand Prix" if int(round_num) == 3 else "Australian Grand Prix"
+                session = fastf1.get_session(year, event_name, session_type)
+                session.load(laps=True, telemetry=True, weather=False)
+                if len(session.laps) > 0:
+                    return session, "success"
+            except Exception:
+                pass
 
     try:
         session = fastf1.get_session(year, round_num, session_type)
@@ -113,8 +122,12 @@ elif status == "unfinalized" or status == "empty_session":
 
 elif status == "success" and session is not None:
     try:
-        # Extract unique drivers dynamically based on active telemetry logs
-        drivers = sorted(list(set(session.laps['Driver'].dropna().unique())))
+        # PROTECTED: Extract unique drivers safely inside a validation check
+        try:
+            drivers = sorted(list(set(session.laps['Driver'].dropna().unique())))
+        except Exception:
+            st.warning(f"⚠️ Telemetry logs for **Round {selected_round} ({selected_session_label})** are currently unfinalized or undergoing synchronization on the FIA servers. Please select a fully completed session.")
+            st.stop()
         
         if len(drivers) < 2:
             st.error("Insufficient driver telemetry logs available for this session to run spatial comparisons.")
@@ -145,7 +158,7 @@ elif status == "success" and session is not None:
                         
                 except Exception as telemetry_load_error:
                     st.warning(f"⚠️ High-frequency sensor arrays for {driver_a} or {driver_b} are currently unfinalized or missing for this specific session type. Try switching session types (e.g., from Practice to Race/Qualifying).")
-                    st.stop() # Stops execution cleanly before the rendering engine breaks
+                    st.stop()
                 
                 # ==========================================
                 # 5. SPATIAL GRID NORMALIZATION (THE CORE MATH)
@@ -266,4 +279,9 @@ elif status == "success" and session is not None:
                         * **Flat Line (➖):** Both drivers are executing identical pacing through that specific stretch of tarmac.
                     """)
     except Exception as render_err:
-        st.error(f"Unexpected operational discrepancy encountered: {render_err}")
+        # In Streamlit, st.stop() raises a base exception to halt scripts. 
+        # We pass it through cleanly so it doesn't trigger our fallback error layout.
+        if "StopException" in type(render_err).__name__:
+            pass
+        else:
+            st.error(f"Unexpected operational discrepancy encountered: {render_err}")
