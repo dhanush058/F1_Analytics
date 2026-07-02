@@ -47,7 +47,8 @@ def load_openf1_session_meta(year, round_num):
         if not session_res or len(session_res) == 0:
             return None, {}, True
             
-        session_key = session_res[0]['session_key']
+        # Convert session key explicitly to an integer for safety
+        session_key = int(session_res[0]['session_key'])
         
         # Pull the absolute active grid roster for that precise session key
         driver_url = f"https://api.openf1.org/v1/drivers?session_key={session_key}"
@@ -96,7 +97,8 @@ def fetch_driver_channel(session_id, driver_num):
     if not session_id:
         return pd.DataFrame()
     try:
-        url = f"https://api.openf1.org/v1/car_data?session_key={session_id}&driver_number={driver_num}"
+        # Enforce clean numerical typing on parameters passed to API query string
+        url = f"https://api.openf1.org/v1/car_data?session_key={int(session_id)}&driver_number={int(driver_num)}"
         res = requests.get(url, timeout=15).json()
         
         if not res or len(res) == 0:
@@ -104,11 +106,10 @@ def fetch_driver_channel(session_id, driver_num):
             
         df = pd.DataFrame(res)
         
-        # OpenF1 records raw speed arrays. We clean up and standardize column naming rules.
+        # Standardize OpenF1 naming conventions down to clean numeric telemetry charts
         cleaned_df = pd.DataFrame()
         cleaned_df['Speed'] = df['speed'].astype(float)
         cleaned_df['Throttle'] = df['throttle'].astype(float) if 'throttle' in df.columns else 0.0
-        # Synthesize a clear continuous distance layout using row progression index
         cleaned_df['Distance'] = np.arange(len(df)) * 4
         
         return cleaned_df
@@ -116,17 +117,19 @@ def fetch_driver_channel(session_id, driver_num):
         return pd.DataFrame()
 
 # Stream the channels live for both compared drivers
-telemetry_a = fetch_driver_channel(session_key, num_a)
-telemetry_b = fetch_driver_channel(session_key, num_b)
+if not is_simulated and session_key is not None:
+    telemetry_a = fetch_driver_channel(session_key, num_a)
+    telemetry_b = fetch_driver_channel(session_key, num_b)
+else:
+    telemetry_a = pd.DataFrame()
+    telemetry_b = pd.DataFrame()
 
 # =========================================================
 # 📈 PLOTLY VISUALIZATION FRAMEWORKS
 # =========================================================
-# Ensure the Data Analyst dashboard renders coordinates immediately when available
 if not telemetry_a.empty and not telemetry_b.empty:
     st.success(f"Successfully rendered 100% authentic {selected_year} performance telemetry lines!")
     
-    # Establish a clean, shared layout tracking velocity grids
     fig = make_subplots(
         rows=2, cols=1, 
         shared_xaxes=True, 
@@ -134,7 +137,7 @@ if not telemetry_a.empty and not telemetry_b.empty:
         subplot_titles=("Velocity Profile (Speed Trace)", "Throttle Input Matrix")
     )
     
-    # Slice a subset of metrics rows (e.g., first 800 data points) to optimize load speed
+    # Slice rows to optimize rendering performance limits on web clients
     plot_slice = 800
     
     # Row 1: Speed Trace Comparison
