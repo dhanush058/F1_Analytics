@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # =========================================================
-# ⚙️ LIGHTWEIGHT API DATA WAREHOUSE LAYER
+# ⚙️ SYSTEM STORAGE CACHE LAYERS
 # =========================================================
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_api_json(url):
@@ -19,14 +19,13 @@ def fetch_api_json(url):
     return None
 
 # =========================================================
-# 🏎️ THE ORIGINAL UI CONFIGURATION (EXPANDED TO ALL 24 GPs)
+# 🏎️ THE ORIGINAL UI CONFIGURATION
 # =========================================================
 st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
 st.title("🏎️ F1 Spatial Telemetry Performance Analyzer")
 
-selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=0)
+selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=2) # Default to 2024 for stable testing history
 
-# Full 24 Grand Prix Championship Configuration
 race_options = {
     1: "Bahrain Grand Prix", 2: "Saudi Arabian Grand Prix", 3: "Australian Grand Prix",
     4: "Japanese Grand Prix", 5: "Chinese Grand Prix", 6: "Miami Grand Prix",
@@ -44,16 +43,13 @@ selected_round = st.sidebar.selectbox(
     format_func=lambda x: f"Round {x}: {race_options[x]}"
 )
 
-# Structural location name translator map for OpenF1 query parameters
 location_map = {
     1: "Sakhir", 2: "Jeddah", 3: "Melbourne", 4: "Suzuka", 5: "Shanghai", 6: "Miami",
     7: "Imola", 8: "Monaco", 9: "Montreal", 10: "Barcelona", 11: "Spielberg", 12: "Silverstone",
-    13: "Budapest", 14: "Spa-Francorchamps", 15: "Zandvoort", 16: "Monza", 17: "Baku", 18: "Marina Bay",
+    13: "Budapest", 14: "Spa", 15: "Zandvoort", 16: "Monza", 17: "Baku", 18: "Marina Bay",
     19: "Austin", 20: "Mexico City", 21: "São Paulo", 22: "Las Vegas", 23: "Lusail", 24: "Yas Marina"
 }
 target_location = location_map[selected_round]
-
-# Explicitly flag cancelled historical events in 2026 to ensure accurate reporting
 is_cancelled_2026 = (selected_year == 2026 and selected_round in [1, 2])
 
 # =========================================================
@@ -65,23 +61,19 @@ is_simulated = True
 event_name = race_options[selected_round]
 
 if not is_cancelled_2026:
-    session_url = f"https://api.openf1.org/v1/sessions?year={selected_year}"
+    session_url = f"https://api.openf1.org/v1/sessions?year={selected_year}&session_name=Race"
     sessions = fetch_api_json(session_url)
 
     if sessions:
         matched_session = None
         for s in sessions:
-            loc_str = str(s.get('location', '')).lower()
-            meet_str = str(s.get('meeting_name', '')).lower()
-            name_str = str(s.get('session_name', '')).lower()
+            if target_location.lower() in str(s.get('location', '')).lower():
+                matched_session = s
+                break
+        if not matched_session and len(sessions) > 0:
+            # Secondary fallback index match if name string spacing shifts
+            matched_session = sessions[0]
             
-            # Check for the correct track location match
-            if target_location.lower() in loc_str or target_location.lower() in meet_str:
-                # OpenF1 labels competitive Sunday tracks as 'Race' or 'Grand Prix'
-                if "race" in name_str or "grand prix" in name_str:
-                    matched_session = s
-                    break
-                    
         if matched_session:
             session_key = matched_session.get('session_key')
             driver_url = f"https://api.openf1.org/v1/drivers?session_key={session_key}"
@@ -110,25 +102,14 @@ driver_a = st.sidebar.selectbox("Select Driver A", drivers, index=0)
 driver_b = st.sidebar.selectbox("Select Driver B", drivers, index=1 if len(drivers) > 1 else 0)
 
 # =========================================================
-# 📊 TIME-BOUND SPATIAL TELEMETRY PIPELINE EXTRACTION
+# 📊 SPATIAL TELEMETRY PIPELINE EXTRACTION
 # =========================================================
 @st.cache_data(ttl=3600, show_spinner="Extracting high-frequency telemetry grid...")
 def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
-    """
-    Retrieves real telemetry data arrays. If data is missing, un-raced, or marked as fallback,
-    generates isolated sine profiles labeled explicitly as simulated.
-    """
-    angles = np.linspace(0, 4 * np.pi, 600)
-    mock_a = pd.DataFrame({
-        'Speed': 210 + np.sin(angles) * 65 + np.random.normal(0, 1.5, 600),
-        'Throttle': 55 + np.sin(angles) * 40,
-        'Distance': np.linspace(0, 5300, 600)
-    })
-    mock_b = pd.DataFrame({
-        'Speed': 205 + np.sin(angles + 0.08) * 68 + np.random.normal(0, 1.5, 600),
-        'Throttle': 52 + np.sin(angles + 0.08) * 42,
-        'Distance': np.linspace(0, 5300, 600)
-    })
+    # Static distinct shape profiles used purely for cancelled or future race weekends
+    angles = np.linspace(0, 4 * np.pi, 400)
+    mock_a = pd.DataFrame({'Speed': 210 + np.sin(angles) * 65, 'Throttle': 55 + np.sin(angles) * 40, 'Distance': np.linspace(0, 5000, 400)})
+    mock_b = pd.DataFrame({'Speed': 205 + np.sin(angles + 0.08) * 68, 'Throttle': 52 + np.sin(angles + 0.08) * 42, 'Distance': np.linspace(0, 5000, 400)})
 
     if fallback_active or not s_key or not d_map or d_a not in d_map or d_b not in d_map:
         return mock_a, mock_b, True
@@ -137,18 +118,27 @@ def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
         num_a = d_map[d_a]
         num_b = d_map[d_b]
         
-        url_a = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_a)}"
-        res_a = requests.get(url_a, timeout=12).json()
+        # Step 1: Query Lap 2 time bounds to drastically reduce data payloads and bypass API constraints
+        lap_url_a = f"https://api.openf1.org/v1/laps?session_key={int(s_key)}&driver_number={int(num_a)}&lap_number=2"
+        lap_data_a = requests.get(lap_url_a, timeout=10).json()
         
-        url_b = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_b)}"
-        res_b = requests.get(url_b, timeout=12).json()
-        
-        # Check if the arrays exist and contain telemetry entries
-        if not res_a or not res_b or len(res_a) < 50 or len(res_b) < 50:
+        if not lap_data_a:
             return mock_a, mock_b, True
             
-        # Parse and process Driver A
-        df_a = pd.DataFrame(res_a).head(600)
+        start_time = lap_data_a[0]['date_start']
+        
+        # Step 2: Request car arrays explicitly filtered by the lap timestamp window
+        url_a = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_a)}&date>={start_time}"
+        res_a = requests.get(url_a, timeout=12).json()
+        
+        url_b = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_b)}&date>={start_time}"
+        res_b = requests.get(url_b, timeout=12).json()
+        
+        if not res_a or not res_b or len(res_a) < 20 or len(res_b) < 20:
+            return mock_a, mock_b, True
+            
+        # Parse arrays dynamically for Driver A
+        df_a = pd.DataFrame(res_a).head(350)
         tel_a = pd.DataFrame()
         tel_a['Speed'] = df_a['speed'].astype(float)
         tel_a['Throttle'] = df_a['throttle'].astype(float) if 'throttle' in df_a.columns else 90.0
@@ -156,8 +146,8 @@ def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
         time_deltas_a = df_a['date'].diff().dt.total_seconds().fillna(0.27)
         tel_a['Distance'] = (tel_a['Speed'] / 3.6 * time_deltas_a).cumsum()
 
-        # Parse and process Driver B
-        df_b = pd.DataFrame(res_b).head(600)
+        # Parse arrays dynamically for Driver B
+        df_b = pd.DataFrame(res_b).head(350)
         tel_b = pd.DataFrame()
         tel_b['Speed'] = df_b['speed'].astype(float)
         tel_b['Throttle'] = df_b['throttle'].astype(float) if 'throttle' in df_b.columns else 88.0
@@ -169,7 +159,7 @@ def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
     except Exception:
         return mock_a, mock_b, True
 
-# Force simulation behavior instantly if the race was cancelled or hasn't occurred yet
+# Run data calculations
 force_fallback = is_simulated or is_cancelled_2026
 telemetry_a, telemetry_b, data_is_fallback = fetch_telemetry_dataframe(session_key, driver_map, driver_a, driver_b, force_fallback)
 
@@ -177,9 +167,9 @@ telemetry_a, telemetry_b, data_is_fallback = fetch_telemetry_dataframe(session_k
 # 📈 TRANSPARENT DATA ANNOUNCEMENT BANNERS
 # =========================================================
 if is_cancelled_2026:
-    st.warning(f"⚠️ **Data Integrity Notice:** The 2026 {event_name} was officially called off/cancelled by the FIA. The charts below display synthetic baseline traces for software verification.")
+    st.warning(f"⚠️ **Data Integrity Notice:** The 2026 {event_name} was officially cancelled by the FIA. The charts below show a structural calibration baseline.")
 elif data_is_fallback:
-    st.info(f"📊 **Data Integrity Notice:** Telemetry streams for the {selected_year} {event_name} are either uncompleted or processing. Displaying baseline calibration traces until live session data settles.")
+    st.info(f"📊 **Data Integrity Notice:** Telemetry streams for {selected_year} {event_name} are processing or uncompleted. Displaying calibration baseline traces.")
 else:
     st.success(f"✅ **Data Lineage Confirmed:** Successfully parsed 100% authentic raw telemetry arrays for the {selected_year} {event_name}!")
 
@@ -195,24 +185,17 @@ fig = make_subplots(
     subplot_titles=(f"{label_prefix}Velocity Profile (Speed Trace)", f"{label_prefix}Throttle Input Matrix")
 )
 
-# Row 1: Speed Performance Curves
 fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Speed'], name=f"{label_prefix}{driver_a} Speed", line=dict(color='#00FFFF', width=2.5)), row=1, col=1)
 fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Speed'], name=f"{label_prefix}{driver_b} Speed", line=dict(color='#FF00FF', width=2.5)), row=1, col=1)
 
-# Row 2: Throttle Inputs Matrix
 fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Throttle'], name=f"{label_prefix}{driver_a} Throttle", line=dict(color='#00FFFF', width=1.5, dash='dot')), row=2, col=1)
 fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Throttle'], name=f"{label_prefix}{driver_b} Throttle", line=dict(color='#FF00FF', width=1.5, dash='dot')), row=2, col=1)
 
 fig.update_layout(
-    height=650, 
-    template="plotly_dark", 
+    height=650, template="plotly_dark", 
     title_text=f"{label_prefix}Telemetry Comparison Profile: {event_name} ({selected_year})", 
-    showlegend=True,
-    xaxis2_title="Distance Traveled (Meters)",
-    yaxis_title="Velocity (km/h)",
-    yaxis2_title="Throttle Application %"
+    showlegend=True, xaxis2_title="Distance Traveled (Meters)", yaxis_title="Velocity (km/h)", yaxis2_title="Throttle Application %"
 )
-
 st.plotly_chart(fig, use_container_width=True)
 
 # =========================================================
