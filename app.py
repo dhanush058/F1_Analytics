@@ -20,7 +20,7 @@ def fetch_api_json(url):
     return None
 
 # =========================================================
-# 🏎️ THE ORIGINAL UI CONFIGURATION (2026 CALENDAR FIXED)
+# 🏎️ THE ORIGINAL UI CONFIGURATION (DYNAMIC MULTI-SEASON ENGINE)
 # =========================================================
 st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
 
@@ -66,19 +66,73 @@ demo_mode = st.sidebar.toggle(
     help="Toggle this on to view full dashboard capabilities instantly if the public F1 API is throttled or offline."
 )
 
-selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=1)
+selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=0)
 
-# Chronologically Correct 2026 Formula 1 Schedule mapping
-race_options = {
-    1: "Bahrain Grand Prix", 2: "Saudi Arabian Grand Prix", 3: "Australian Grand Prix",
-    4: "Chinese Grand Prix", 5: "Japanese Grand Prix", 6: "Miami Grand Prix",
-    7: "Canadian Grand Prix", 8: "Monaco Grand Prix", 9: "Barcelona-Catalunya Grand Prix",
-    10: "Austrian Grand Prix", 11: "British Grand Prix", 12: "Belgian Grand Prix",
-    13: "Hungarian Grand Prix", 14: "Dutch Grand Prix", 15: "Italian Grand Prix",
-    16: "Spanish Grand Prix (Madrid)", 17: "Azerbaijan Grand Prix", 18: "Singapore Grand Prix",
-    19: "United States Grand Prix", 20: "Mexico City Grand Prix", 21: "São Paulo Grand Prix",
-    22: "Las Vegas Grand Prix", 23: "Qatar Grand Prix", 24: "Abu Dhabi Grand Prix"
+# Multi-Season Master Database Calendar Configurations
+seasonal_schedule = {
+    2026: {
+        "races": {
+            1: "Australian Grand Prix", 2: "Chinese Grand Prix", 3: "Japanese Grand Prix",
+            4: "Bahrain Grand Prix (Cancelled)", 5: "Saudi Arabian Grand Prix (Cancelled)", 6: "Miami Grand Prix",
+            7: "Canadian Grand Prix", 8: "Monaco Grand Prix", 9: "Barcelona-Catalunya Grand Prix",
+            10: "Austrian Grand Prix", 11: "British Grand Prix", 12: "Belgian Grand Prix",
+            13: "Hungarian Grand Prix", 14: "Dutch Grand Prix", 15: "Italian Grand Prix",
+            16: "Spanish Grand Prix (Madrid Layout)", 17: "Azerbaijan Grand Prix", 18: "Singapore Grand Prix",
+            19: "United States Grand Prix", 20: "Mexico City Grand Prix", 21: "São Paulo Grand Prix",
+            22: "Las Vegas Grand Prix", 23: "Qatar Grand Prix", 24: "Abu Dhabi Grand Prix"
+        },
+        "locations": {
+            1: "Melbourne", 2: "Shanghai", 3: "Suzuka", 4: "Sakhir", 5: "Jeddah", 6: "Miami",
+            7: "Montreal", 8: "Monaco", 9: "Barcelona", 10: "Spielberg", 11: "Silverstone", 12: "Spa",
+            13: "Budapest", 14: "Zandvoort", 15: "Monza", 16: "Madrid", 17: "Baku", 18: "Marina Bay",
+            19: "Austin", 20: "Mexico City", 21: "São Paulo", 22: "Las Vegas", 23: "Lusail", 24: "Yas Marina"
+        },
+        "cancelled_rounds": [4, 5]
+    },
+    2025: {
+        "races": {
+            1: "Australian Grand Prix", 2: "Chinese Grand Prix", 3: "Japanese Grand Prix",
+            4: "Bahrain Grand Prix", 5: "Saudi Arabian Grand Prix", 6: "Miami Grand Prix",
+            7: "Emilia Romagna Grand Prix", 8: "Monaco Grand Prix", 9: "Spanish Grand Prix",
+            10: "Canadian Grand Prix", 11: "Austrian Grand Prix", 12: "British Grand Prix",
+            13: "Belgian Grand Prix", 14: "Hungarian Grand Prix", 15: "Dutch Grand Prix",
+            16: "Italian Grand Prix", 17: "Azerbaijan Grand Prix", 18: "Singapore Grand Prix",
+            19: "United States Grand Prix", 20: "Mexico City Grand Prix", 21: "São Paulo Grand Prix",
+            22: "Las Vegas Grand Prix", 23: "Qatar Grand Prix", 24: "Abu Dhabi Grand Prix"
+        },
+        "locations": {
+            1: "Melbourne", 2: "Shanghai", 3: "Suzuka", 4: "Sakhir", 5: "Jeddah", 6: "Miami",
+            7: "Spielberg", 8: "Monaco", 9: "Barcelona", 10: "Montreal", 11: "Spielberg", 12: "Silverstone",
+            13: "Spa", 14: "Budapest", 15: "Zandvoort", 16: "Monza", 17: "Baku", 18: "Marina Bay",
+            19: "Austin", 20: "Mexico City", 21: "São Paulo", 22: "Las Vegas", 23: "Lusail", 24: "Yas Marina"
+        },
+        "cancelled_rounds": []
+    },
+    2024: {
+        "races": {
+            1: "Bahrain Grand Prix", 2: "Saudi Arabian Grand Prix", 3: "Australian Grand Prix",
+            4: "Japanese Grand Prix", 5: "Chinese Grand Prix", 6: "Miami Grand Prix",
+            7: "Emilia Romagna Grand Prix", 8: "Monaco Grand Prix", 9: "Canadian Grand Prix",
+            10: "Spanish Grand Prix", 11: "Austrian Grand Prix", 12: "British Grand Prix",
+            13: "Hungarian Grand Prix", 14: "Belgian Grand Prix", 15: "Dutch Grand Prix",
+            16: "Italian Grand Prix", 17: "Azerbaijan Grand Prix", 18: "Singapore Grand Prix",
+            19: "United States Grand Prix", 20: "Mexico City Grand Prix", 21: "São Paulo Grand Prix",
+            22: "Las Vegas Grand Prix", 23: "Qatar Grand Prix", 24: "Abu Dhabi Grand Prix"
+        },
+        "locations": {
+            1: "Sakhir", 2: "Jeddah", 3: "Melbourne", 4: "Suzuka", 5: "Shanghai", 6: "Miami",
+            7: "Spielberg", 8: "Monaco", 9: "Montreal", 10: "Barcelona", 11: "Spielberg", 12: "Silverstone",
+            13: "Budapest", 14: "Spa", 15: "Zandvoort", 16: "Monza", 17: "Baku", 18: "Marina Bay",
+            19: "Austin", 20: "Mexico City", 21: "São Paulo", 22: "Las Vegas", 23: "Lusail", 24: "Yas Marina"
+        },
+        "cancelled_rounds": []
+    }
 }
+
+# Resolve active dataset based on year selection drop-down matrix
+active_config = seasonal_schedule[selected_year]
+race_options = active_config["races"]
+location_map = active_config["locations"]
 
 selected_round = st.sidebar.selectbox(
     "Select Grand Prix Track", 
@@ -102,15 +156,8 @@ selected_session_label = st.sidebar.selectbox(
 )
 selected_session_api_name = session_options[selected_session_label]
 
-# Map targeting matching keywords inside OpenF1 string locations
-location_map = {
-    1: "Sakhir", 2: "Jeddah", 3: "Melbourne", 4: "Shanghai", 5: "Suzuka", 6: "Miami",
-    7: "Montreal", 8: "Monaco", 9: "Barcelona", 10: "Spielberg", 11: "Silverstone", 12: "Spa",
-    13: "Budapest", 14: "Zandvoort", 15: "Monza", 16: "Madrid", 17: "Baku", 18: "Marina Bay",
-    19: "Austin", 20: "Mexico City", 21: "São Paulo", 22: "Las Vegas", 23: "Lusail", 24: "Yas Marina"
-}
 target_location = location_map[selected_round]
-is_cancelled_2026 = (selected_year == 2026 and selected_round in [1, 2])
+is_cancelled_round = selected_round in active_config["cancelled_rounds"]
 
 # =========================================================
 # 🌐 OPENF1 METADATA RESOLVER
@@ -120,7 +167,7 @@ driver_map = {}
 is_simulated = True
 event_name = race_options[selected_round]
 
-if not is_cancelled_2026 and not demo_mode:
+if not is_cancelled_round and not demo_mode:
     session_url = f"https://api.openf1.org/v1/sessions?year={selected_year}&session_name={selected_session_api_name}"
     sessions = fetch_api_json(session_url)
 
@@ -211,7 +258,7 @@ def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
         return None, None, True
 
 # Run data calculations
-force_fallback = is_simulated or is_cancelled_2026 or demo_mode
+force_fallback = is_simulated or is_cancelled_round or demo_mode
 telemetry_a, telemetry_b, data_is_fallback = fetch_telemetry_dataframe(session_key, driver_map, driver_a, driver_b, force_fallback)
 
 # =========================================================
@@ -226,7 +273,7 @@ if (data_is_fallback or telemetry_a is None) and demo_mode:
     id_a = driver_ids.get(driver_a, 10)
     id_b = driver_ids.get(driver_b, 20)
     
-    np.random.seed(int(selected_round) + len(selected_session_label))
+    np.random.seed(int(selected_round) + len(selected_session_label) + selected_year)
     track_length = 4100 + (selected_round * 110)  
     num_corners = 5 + (selected_round % 9)       
     dist_baseline = np.linspace(0, track_length, 450)
@@ -236,12 +283,12 @@ if (data_is_fallback or telemetry_a is None) and demo_mode:
         corner_pos = (track_length / (num_corners + 1)) * (i + 1) + np.random.uniform(-100, 100)
         speed_base -= 90 * np.exp(-((dist_baseline - corner_pos) / 220)**2)
     
-    np.random.seed(id_a + selected_round)
+    np.random.seed(id_a + selected_round + selected_year)
     driver_a_aggression = np.random.uniform(0.96, 1.04)
     speed_a = np.clip((speed_base * driver_a_aggression) + np.random.normal(0, 1.5, len(dist_baseline)), 60, 340)
     throttle_a = np.clip(100 - (300 - speed_a) * 1.1 + np.random.normal(0, 2, len(dist_baseline)), 0, 100)
     
-    np.random.seed(id_b + selected_round)
+    np.random.seed(id_b + selected_round + selected_year)
     driver_b_aggression = np.random.uniform(0.96, 1.04)
     spatial_shift = int(np.random.uniform(-5, 5))
     speed_base_shifted = np.roll(speed_base, spatial_shift)
@@ -264,7 +311,6 @@ if telemetry_a is not None and telemetry_b is not None:
     max_v_a = telemetry_a['Speed'].max()
     max_v_b = telemetry_b['Speed'].max()
     
-    # Dynamic Vmax assignment mapping who achieved peak telemetry velocity
     if max_v_a > max_v_b:
         peak_velocity = f"{max_v_a:.1f} km/h ({driver_a})"
     else:
@@ -339,9 +385,9 @@ st.markdown("---")
 # =========================================================
 # 📊 CONDITIONAL RENDERING LAYER (SMART DIAGNOSTIC ENGINE)
 # =========================================================
-if is_cancelled_2026:
-    st.sidebar.error("🚨 Status: Race Cancelled")
-    st.error(f"❌ **Data Governance Error:** The 2026 {event_name} was officially cancelled by the FIA. No historical vehicle sensor data exists for this event.")
+if is_cancelled_round:
+    st.sidebar.error("🚨 Status: Round Cancelled")
+    st.error(f"❌ **Data Governance Error:** The {selected_year} {event_name} was officially cancelled by the FIA. No historical vehicle sensor data exists for this event.")
     
 elif telemetry_a is None:
     st.sidebar.warning("⚠️ Status: Data Input Disrupted")
