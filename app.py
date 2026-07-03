@@ -220,12 +220,10 @@ if (data_is_fallback or telemetry_a is None) and demo_mode:
     st.sidebar.info("🖥️ Status: Smart Demo Core Active")
     st.info(f"💡 **Portfolio Demo Mode Active:** Generating unique, deterministic spatial traces for {event_name} ({selected_session_label}) based on driver profile matrices.")
     
-    # Static driver number assignment to guarantee mathematical seed consistency
     driver_ids = {"VER": 33, "HAM": 44, "NOR": 4, "LEC": 16, "RUS": 63, "PIA": 81}
     id_a = driver_ids.get(driver_a, 10)
     id_b = driver_ids.get(driver_b, 20)
     
-    # 1. Establish Track Shape Baseline (Monaco vs Monza baseline structures)
     np.random.seed(int(selected_round) + len(selected_session_label))
     track_length = 4100 + (selected_round * 110)  
     num_corners = 5 + (selected_round % 9)       
@@ -236,13 +234,11 @@ if (data_is_fallback or telemetry_a is None) and demo_mode:
         corner_pos = (track_length / (num_corners + 1)) * (i + 1) + np.random.uniform(-100, 100)
         speed_base -= 90 * np.exp(-((dist_baseline - corner_pos) / 220)**2)
     
-    # 2. Compute Unique Shifted Output Arrays for Driver A
     np.random.seed(id_a + selected_round)
     driver_a_aggression = np.random.uniform(0.96, 1.04)
     speed_a = np.clip((speed_base * driver_a_aggression) + np.random.normal(0, 1.5, len(dist_baseline)), 60, 340)
     throttle_a = np.clip(100 - (300 - speed_a) * 1.1 + np.random.normal(0, 2, len(dist_baseline)), 0, 100)
     
-    # 3. Compute Unique Shifted Output Arrays for Driver B
     np.random.seed(id_b + selected_round)
     driver_b_aggression = np.random.uniform(0.96, 1.04)
     spatial_shift = int(np.random.uniform(-5, 5))
@@ -251,7 +247,6 @@ if (data_is_fallback or telemetry_a is None) and demo_mode:
     speed_b = np.clip((speed_base_shifted * driver_b_aggression) + np.random.normal(0, 1.5, len(dist_baseline)), 60, 340)
     throttle_b = np.clip(100 - (300 - speed_b) * 1.1 + np.random.normal(0, 2, len(dist_baseline)), 0, 100)
     
-    # 4. Integrate Velocity Scalars to Calculate Realistic Time Delta Gaps
     time_a = np.cumsum(1 / (np.maximum(speed_a, 12) / 3.6))
     time_b = np.cumsum(1 / (np.maximum(speed_b, 12) / 3.6))
     delta_time = (time_a - time_b) * 15.0  
@@ -266,7 +261,13 @@ if telemetry_a is not None and telemetry_b is not None:
     total_dist = f"{int(telemetry_a['Distance'].max()):,} m"
     max_v_a = telemetry_a['Speed'].max()
     max_v_b = telemetry_b['Speed'].max()
-    peak_velocity = f"{max(max_v_a, max_v_b):.1f} km/h"
+    
+    # Dynamic Vmax assignment mapping who achieved peak telemetry velocity
+    if max_v_a > max_v_b:
+        peak_velocity = f"{max_v_a:.1f} km/h ({driver_a})"
+    else:
+        peak_velocity = f"{max_v_b:.1f} km/h ({driver_b})"
+        
     max_delta = f"{telemetry_a['Delta_Time'].abs().max():.3f} s"
     
     r_corr = telemetry_a['Throttle'].corr(telemetry_b['Throttle'])
@@ -343,13 +344,11 @@ if is_cancelled_2026:
 elif telemetry_a is None:
     st.sidebar.warning("⚠️ Status: Data Input Disrupted")
     
-    # Smart Data Check: Catch if chosen drivers are invalid line-up combinations for this track weekend
     if not demo_mode and driver_map and (driver_a not in driver_map or driver_b not in driver_map):
         missing_drivers = [d for d in [driver_a, driver_b] if d not in driver_map]
         st.error(f"❌ **Invalid Driver Lineup Matchup:** {', '.join(missing_drivers)} did not log telemetry during the {selected_year} {event_name} {selected_session_label} session.")
         st.info("💡 **Fix:** Please adjust your driver selections in the sidebar to match participants who actively ran laps during this specific session.")
     
-    # True Cloud Server Exception Fallback
     else:
         st.warning(f"📋 **Data Lineage Notice:** The live public OpenF1 API endpoint is currently unresponsive or empty for the selected {selected_session_label} data array.")
         st.info("💡 **Recruiter Tip:** To evaluate this application's telemetry subplots, interactive features, and analytics layers without waiting on public server traffic, please toggle **'Enable Simulated Demo Mode'** at the top of the left sidebar!")
