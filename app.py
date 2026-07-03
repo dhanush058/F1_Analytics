@@ -85,6 +85,23 @@ selected_round = st.sidebar.selectbox(
     format_func=lambda x: f"Round {x}: {race_options[x]}"
 )
 
+# New Session Selection Menu Added Seamlessly Here
+session_options = {
+    "Race": "Race",
+    "Qualifying": "Qualifying",
+    "FP1": "Practice 1",
+    "FP2": "Practice 2",
+    "FP3": "Practice 3",
+    "Sprint": "Sprint",
+    "Sprint Qualifying": "Sprint Qualifying"
+}
+selected_session_label = st.sidebar.selectbox(
+    "Select Session Type",
+    list(session_options.keys()),
+    index=0
+)
+selected_session_api_name = session_options[selected_session_label]
+
 location_map = {
     1: "Sakhir", 2: "Jeddah", 3: "Melbourne", 4: "Suzuka", 5: "Shanghai", 6: "Miami",
     7: "Imola", 8: "Monaco", 9: "Montreal", 10: "Barcelona", 11: "Spielberg", 12: "Silverstone",
@@ -103,7 +120,8 @@ is_simulated = True
 event_name = race_options[selected_round]
 
 if not is_cancelled_2026 and not demo_mode:
-    session_url = f"https://api.openf1.org/v1/sessions?year={selected_year}&session_name=Race"
+    # Integrated the dynamic selected_session_api_name filter directly into the REST string line
+    session_url = f"https://api.openf1.org/v1/sessions?year={selected_year}&session_name={selected_session_api_name}"
     sessions = fetch_api_json(session_url)
 
     if sessions:
@@ -202,7 +220,7 @@ telemetry_a, telemetry_b, data_is_fallback = fetch_telemetry_dataframe(session_k
 if (data_is_fallback or telemetry_a is None) and demo_mode:
     data_is_fallback = False  
     st.sidebar.info("🖥️ Status: Smart Demo Core Active")
-    st.info(f"💡 **Portfolio Demo Mode Active:** Generating unique, deterministic spatial traces for {event_name} based on driver profile matrices.")
+    st.info(f"💡 **Portfolio Demo Mode Active:** Generating unique, deterministic spatial traces for {event_name} ({selected_session_label}) based on driver profile matrices.")
     
     # Static driver number assignment to guarantee mathematical seed consistency
     driver_ids = {"VER": 33, "HAM": 44, "NOR": 4, "LEC": 16, "RUS": 63, "PIA": 81}
@@ -210,7 +228,7 @@ if (data_is_fallback or telemetry_a is None) and demo_mode:
     id_b = driver_ids.get(driver_b, 20)
     
     # 1. Establish Track Shape Baseline (Monaco vs Monza baseline structures)
-    np.random.seed(int(selected_round))
+    np.random.seed(int(selected_round) + len(selected_session_label))
     track_length = 4100 + (selected_round * 110)  
     num_corners = 5 + (selected_round % 9)       
     dist_baseline = np.linspace(0, track_length, 450)
@@ -314,7 +332,7 @@ with sum_col5:
     """, unsafe_allow_html=True)
 
 st.markdown(f"""
-> **Strategic Intelligence Note:** This analytical dashboard evaluates micro-variances in the performance envelopes of **{driver_a}** and **{driver_b}**. By converting raw asynchronous telemetry variables into absolute spatial meters, it isolates exact driver braking thresholds, cornering traction limits, and straight-line drag coefficients. This panel transforms complex telemetry data streams directly into stakeholder-ready tactical metrics.
+> **Strategic Intelligence Note:** This analytical dashboard evaluates micro-variances in the performance envelopes of **{driver_a}** and **{driver_b}** during the **{selected_session_label}** session. By converting raw asynchronous telemetry variables into absolute spatial meters, it isolates exact driver braking thresholds, cornering traction limits, and straight-line drag coefficients. This panel transforms complex telemetry data streams directly into stakeholder-ready tactical metrics.
 """)
 st.markdown("---")
 
@@ -327,18 +345,18 @@ if is_cancelled_2026:
     
 elif telemetry_a is None:
     st.sidebar.warning("⚠️ Status: API Throttled/Empty")
-    st.warning("📋 **Data Lineage Notice:** The live public OpenF1 API endpoint is currently unresponsive or rate-limiting incoming global traffic.")
+    st.warning(f"📋 **Data Lineage Notice:** The live public OpenF1 API endpoint is currently unresponsive or empty for the selected {selected_session_label} data array.")
     st.info("💡 **Recruiter Tip:** To evaluate this application's telemetry subplots, interactive features, and analytics layers without waiting on public server traffic, please toggle **'Enable Simulated Demo Mode'** at the top of the left sidebar!")
 
 else:
     if not demo_mode:
-        st.sidebar.success("✅ Status: 100% Verified Stream")
-        st.success(f"✅ **Data Lineage Confirmed:** Successfully parsed 100% authentic raw telemetry arrays for the {selected_year} {event_name}!")
+        st.sidebar.success(f"✅ Status: 100% Verified Stream ({selected_session_label})")
+        st.success(f"✅ **Data Lineage Confirmed:** Successfully parsed 100% authentic raw telemetry arrays for the {selected_year} {event_name} {selected_session_label} session!")
 
     # =========================================================
     # 📈 PLOTLY THREE-TIER MULTI-AXIS CHART ENGINE (NEON GLOW)
     # =========================================================
-    label_suffix = " (Demo)" if demo_mode else ""
+    label_suffix = f" ({selected_session_label} - Demo)" if demo_mode else f" ({selected_session_label})"
     fig = make_subplots(
         rows=3, cols=1, 
         shared_xaxes=True, 
