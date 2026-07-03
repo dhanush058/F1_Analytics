@@ -85,7 +85,6 @@ selected_round = st.sidebar.selectbox(
     format_func=lambda x: f"Round {x}: {race_options[x]}"
 )
 
-# New Session Selection Menu Added Seamlessly Here
 session_options = {
     "Race": "Race",
     "Qualifying": "Qualifying",
@@ -120,7 +119,6 @@ is_simulated = True
 event_name = race_options[selected_round]
 
 if not is_cancelled_2026 and not demo_mode:
-    # Integrated the dynamic selected_session_api_name filter directly into the REST string line
     session_url = f"https://api.openf1.org/v1/sessions?year={selected_year}&session_name={selected_session_api_name}"
     sessions = fetch_api_json(session_url)
 
@@ -271,7 +269,6 @@ if telemetry_a is not None and telemetry_b is not None:
     peak_velocity = f"{max(max_v_a, max_v_b):.1f} km/h"
     max_delta = f"{telemetry_a['Delta_Time'].abs().max():.3f} s"
     
-    # Math Calculus: Statistical Pearson r correlation coefficient for throttle profiles
     r_corr = telemetry_a['Throttle'].corr(telemetry_b['Throttle'])
     throttle_corr = f"{r_corr:.2f}" if not np.isnan(r_corr) else "1.00"
     
@@ -337,16 +334,25 @@ st.markdown(f"""
 st.markdown("---")
 
 # =========================================================
-# 📊 CONDITIONAL RENDERING LAYER (DATA GOVERNANCE CHECK)
+# 📊 CONDITIONAL RENDERING LAYER (SMART DIAGNOSTIC ENGINE)
 # =========================================================
 if is_cancelled_2026:
     st.sidebar.error("🚨 Status: Race Cancelled")
     st.error(f"❌ **Data Governance Error:** The 2026 {event_name} was officially cancelled by the FIA. No historical vehicle sensor data exists for this event.")
     
 elif telemetry_a is None:
-    st.sidebar.warning("⚠️ Status: API Throttled/Empty")
-    st.warning(f"📋 **Data Lineage Notice:** The live public OpenF1 API endpoint is currently unresponsive or empty for the selected {selected_session_label} data array.")
-    st.info("💡 **Recruiter Tip:** To evaluate this application's telemetry subplots, interactive features, and analytics layers without waiting on public server traffic, please toggle **'Enable Simulated Demo Mode'** at the top of the left sidebar!")
+    st.sidebar.warning("⚠️ Status: Data Input Disrupted")
+    
+    # Smart Data Check: Catch if chosen drivers are invalid line-up combinations for this track weekend
+    if not demo_mode and driver_map and (driver_a not in driver_map or driver_b not in driver_map):
+        missing_drivers = [d for d in [driver_a, driver_b] if d not in driver_map]
+        st.error(f"❌ **Invalid Driver Lineup Matchup:** {', '.join(missing_drivers)} did not log telemetry during the {selected_year} {event_name} {selected_session_label} session.")
+        st.info("💡 **Fix:** Please adjust your driver selections in the sidebar to match participants who actively ran laps during this specific session.")
+    
+    # True Cloud Server Exception Fallback
+    else:
+        st.warning(f"📋 **Data Lineage Notice:** The live public OpenF1 API endpoint is currently unresponsive or empty for the selected {selected_session_label} data array.")
+        st.info("💡 **Recruiter Tip:** To evaluate this application's telemetry subplots, interactive features, and analytics layers without waiting on public server traffic, please toggle **'Enable Simulated Demo Mode'** at the top of the left sidebar!")
 
 else:
     if not demo_mode:
@@ -368,18 +374,14 @@ else:
         )
     )
 
-    # 1. Velocity Traces - Thick Solid Neon Cyberpunk Styling
     fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Speed'], name=f"{driver_a} Speed", line=dict(color='#00FFFF', width=3)), row=1, col=1) 
     fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Speed'], name=f"{driver_b} Speed", line=dict(color='#FF00FF', width=3)), row=1, col=1) 
 
-    # 2. Throttle Inputs - High-Contrast Neon Long Dashes
     fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Throttle'], name=f"{driver_a} Throttle", line=dict(color='#00FFFF', width=1.5, dash='longdash')), row=2, col=1)
     fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Throttle'], name=f"{driver_b} Throttle", line=dict(color='#FF00FF', width=1.5, dash='longdash')), row=2, col=1)
 
-    # 3. Delta Time Plot - Neon Laser Green Analytics Profile
     fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Delta_Time'], name="Time Delta Gap", line=dict(color='#00FF66', width=2.5)), row=3, col=1) 
 
-    # Strict dark canvas layout formatting
     fig.update_layout(
         height=850, 
         template="plotly_dark", 
@@ -392,7 +394,6 @@ else:
         yaxis3_title="Delta (Seconds)"
     )
     
-    # Technical layout grid line variables
     fig.update_xaxes(gridcolor='#222933', zerolinecolor='#444d56')
     fig.update_yaxes(gridcolor='#222933', zerolinecolor='#444d56')
     
