@@ -23,7 +23,38 @@ def fetch_api_json(url):
 # 🏎️ THE ORIGINAL UI CONFIGURATION (24 GRAND PRIX CALENDAR)
 # =========================================================
 st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
-st.title("🏎️ F1 Spatial Telemetry Performance Analyzer")
+
+# F1 THEME INJECTED STYLE OVERRIDES (STRICTLY NON-DESTRUCTIVE INTERFACE)
+st.markdown("""
+    <style>
+        /* F1 Racing Theme Branding Accent */
+        .f1-banner {
+            background: linear-gradient(90deg, #FF0000 0%, #1E1E24 100%);
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 6px solid #FF0000;
+            margin-bottom: 25px;
+        }
+        .f1-title {
+            color: #FFFFFF !important;
+            font-family: 'Titillium Web', sans-serif;
+            font-weight: 800;
+            letter-spacing: 1px;
+            margin: 0px !important;
+        }
+        /* Executive Dashboard Matrix Box styling */
+        .metric-card {
+            background-color: #151922;
+            border: 1px solid #222933;
+            border-top: 3px solid #FF0000;
+            padding: 15px;
+            border-radius: 4px;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+# Custom Themed Racing Header Block
+st.markdown('<div class="f1-banner"><h1 class="f1-title">🏎️ FORMULA 1 SPATIAL TELEMETRY PERFORMANCE ANALYZER</h1></div>', unsafe_allow_html=True)
 
 # Strategic Recruiter Overrides in the Sidebar
 st.sidebar.markdown("### 🛠️ Portfolio Control Panel")
@@ -106,6 +137,44 @@ driver_a = st.sidebar.selectbox("Select Driver A (Baseline)", drivers, index=0)
 driver_b = st.sidebar.selectbox("Select Driver B (Comparison)", drivers, index=1 if len(drivers) > 1 else 0)
 
 # =========================================================
+# 📑 EXECUTIVE SUMMARY & ANCHOR KPI MATRIX
+# =========================================================
+st.markdown("### 📋 Executive Summary Insights Panel")
+sum_col1, sum_col2, sum_col3 = st.columns(3)
+
+with sum_col1:
+    st.markdown(f"""
+    <div class="metric-card">
+        <strong style='color:#FF0000; font-size:14px;'>🏁 ANALYSIS SCOPE</strong><br>
+        <span style='font-size:20px; font-weight:bold;'>{event_name}</span><br>
+        <span style='color:#8892B0; font-size:12px;'>Season Campaign Matrix: {selected_year}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+with sum_col2:
+    st.markdown(f"""
+    <div class="metric-card">
+        <strong style='color:#FF0000; font-size:14px;'>🏎️ MATCHUP PAIRING</strong><br>
+        <span style='font-size:20px; font-weight:bold;'>{driver_a} vs. {driver_b}</span><br>
+        <span style='color:#8892B0; font-size:12px;'>Spatial Baseline Anchor: {driver_a}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+with sum_col3:
+    st.markdown(f"""
+    <div class="metric-card">
+        <strong style='color:#FF0000; font-size:14px;'>📊 EXECUTIVE VALUATION</strong><br>
+        <span style='font-size:20px; font-weight:bold;'>Spatial Normalization</span><br>
+        <span style='color:#8892B0; font-size:12px;'>Status: {'Demo Emulation Engine' if demo_mode else 'Live Active Feed'}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown(f"""
+> **Strategic Intelligence Note:** This analytical control room tracks micro-variances in the performance envelopes of **{driver_a}** and **{driver_b}**. By converting raw asynchronous telemetry profiles into absolute spatial meters, it isolates exact driver braking thresholds, cornering traction limits, and straight-line drag coefficients. This panel transforms complex telemetry data streams directly into stakeholder-ready tactical metrics.
+""")
+st.markdown("---")
+
+# =========================================================
 # 📊 DATA-VALIDATED TELEMETRY EXTRACTION ENGINE
 # =========================================================
 @st.cache_data(ttl=1800, show_spinner="Querying telemetry pipeline matrix...")
@@ -164,44 +233,48 @@ force_fallback = is_simulated or is_cancelled_2026 or demo_mode
 telemetry_a, telemetry_b, data_is_fallback = fetch_telemetry_dataframe(session_key, driver_map, driver_a, driver_b, force_fallback)
 
 # =========================================================
-# ⚙️ ON-DEMAND PSEUDO-RANDOM HIGH-FIDELITY SIMULATOR
+# ⚙️ DYNAMIC PSEUDO-RANDOM HIGH-FIDELITY SIMULATOR (FIXED)
 # =========================================================
 if (data_is_fallback or telemetry_a is None) and demo_mode:
     data_is_fallback = False  
     st.sidebar.info("🖥️ Status: Smart Demo Core Active")
-    st.info(f"💡 **Portfolio Demo Mode Active:** Generating a unique, deterministic spatial trace for the {event_name} using isolated local calculus.")
+    st.info(f"💡 **Portfolio Demo Mode Active:** Generating unique, deterministic spatial traces for {event_name} based on driver profile matrices.")
     
-    # Use the selected round number as a seed so different tracks look completely different
+    # Static driver number assignment to guarantee mathematical seed consistency
+    driver_ids = {"VER": 33, "HAM": 44, "NOR": 4, "LEC": 16, "RUS": 63, "PIA": 81}
+    id_a = driver_ids.get(driver_a, 10)
+    id_b = driver_ids.get(driver_b, 20)
+    
+    # 1. Establish Track Shape Baseline (Monaco vs Monza baseline structures)
     np.random.seed(int(selected_round))
-    
-    # Dynamically alter circuit characteristics based on selection configurations
-    track_length = 4200 + (selected_round * 95)  # Varied lap layout space
-    num_corners = 6 + (selected_round % 10)       # Number of braking interventions
-    
+    track_length = 4100 + (selected_round * 110)  
+    num_corners = 5 + (selected_round % 9)       
     dist_baseline = np.linspace(0, track_length, 450)
     
-    # Calculate track velocity profile geometry
-    speed_base = 275.0
+    speed_base = 270.0
     for i in range(num_corners):
-        # Generate predictable, fixed apex locations unique to this round index
-        corner_pos = (track_length / (num_corners + 1)) * (i + 1) + np.random.uniform(-120, 120)
-        # Apply gaussian distributions to mimic deceleration pockets
-        speed_base -= 95 * np.exp(-((dist_baseline - corner_pos) / 240)**2)
+        corner_pos = (track_length / (num_corners + 1)) * (i + 1) + np.random.uniform(-100, 100)
+        speed_base -= 90 * np.exp(-((dist_baseline - corner_pos) / 220)**2)
     
-    # Apply unique deterministic seeds to isolate driver micro-behaviors safely
-    np.random.seed(hash(driver_a) % 10000)
-    speed_a = np.clip(speed_base + np.random.normal(0, 1.8, len(dist_baseline)), 65, 335)
-    throttle_a = np.clip(100 - (295 - speed_a) * 1.05 + np.random.normal(0, 2.5, len(dist_baseline)), 0, 100)
+    # 2. Compute Unique Shifted Output Arrays for Driver A
+    np.random.seed(id_a + selected_round)
+    driver_a_aggression = np.random.uniform(0.96, 1.04)
+    speed_a = np.clip((speed_base * driver_a_aggression) + np.random.normal(0, 1.5, len(dist_baseline)), 60, 340)
+    throttle_a = np.clip(100 - (300 - speed_a) * 1.1 + np.random.normal(0, 2, len(dist_baseline)), 0, 100)
     
-    np.random.seed(hash(driver_b) % 10000)
-    # Generate spatial stylistic offsets for comparison driver
-    speed_b = np.clip(speed_base + np.random.normal(0.8, 2.2, len(dist_baseline)) + (np.sin(dist_baseline / 180) * 3.5), 65, 335)
-    throttle_b = np.clip(100 - (295 - speed_b) * 1.02 + np.random.normal(0, 2.5, len(dist_baseline)), 0, 100)
+    # 3. Compute Unique Shifted Output Arrays for Driver B
+    np.random.seed(id_b + selected_round)
+    driver_b_aggression = np.random.uniform(0.96, 1.04)
+    spatial_shift = int(np.random.uniform(-5, 5))
+    speed_base_shifted = np.roll(speed_base, spatial_shift)
     
-    # Re-integrate velocity scalars back into pacing delta timelines
-    time_a = np.cumsum(1 / (np.maximum(speed_a, 10) / 3.6)) * (track_length / len(dist_baseline))
-    time_b = np.cumsum(1 / (np.maximum(speed_b, 10) / 3.6)) * (track_length / len(dist_baseline))
-    delta_time = (time_a - time_b) * 0.12  # Clean scaling factor for realistic visual gaps
+    speed_b = np.clip((speed_base_shifted * driver_b_aggression) + np.random.normal(0, 1.5, len(dist_baseline)), 60, 340)
+    throttle_b = np.clip(100 - (300 - speed_b) * 1.1 + np.random.normal(0, 2, len(dist_baseline)), 0, 100)
+    
+    # 4. Integrate Velocity Scalars to Calculate Realistic Time Delta Gaps
+    time_a = np.cumsum(1 / (np.maximum(speed_a, 12) / 3.6))
+    time_b = np.cumsum(1 / (np.maximum(speed_b, 12) / 3.6))
+    delta_time = (time_a - time_b) * 15.0  
     
     telemetry_a = pd.DataFrame({'Distance': dist_baseline, 'Speed': speed_a, 'Throttle': throttle_a, 'Delta_Time': delta_time})
     telemetry_b = pd.DataFrame({'Distance': dist_baseline, 'Speed': speed_b, 'Throttle': throttle_b})
