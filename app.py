@@ -389,53 +389,21 @@ st.markdown("## 📊 Telemetry Engineering Field Manual")
 col_left, col_right = st.columns(2)
 
 with col_left:
-    st.success("### 📈 Tactical Racing Metrics (Business/Strategy)")
+    st.success("### 📈 Tactical Racing Analysis (How to Read the Plots)")
     st.markdown(f"""
-    This dashboard projects high-frequency vehicle sensor channels over an absolute distance baseline, isolating driver habits and vehicle performance margins between **{driver_a}** and **{driver_b}**.
-
-    * **Circuit Footprint:** Verifies the physical boundary limit of the track window under analysis.
-    * **Matchup Correlation ($r$-Score):** Measures driving style alignment. High correlation ($r \\to 1$) reveals identical cornering geometry; lower scores uncover divergent braking points or lift-and-coast fuel management.
-    * **Top Speed (Vmax):** Highlights straight-line aerodynamic efficiency, engine power deployment, and DRS drag limits.
-    * **Max Performance Gap:** Pinpoints the absolute spatial time loss or gain margin across the lap footprint.
-    * **Speed & Throttle Traces:** Diverging curves identify variances in corner approach aggression and acceleration stability.
+    This matrix aligns time-series variables over absolute spatial distance to track driving habits and vehicle margins between **{driver_a}** and **{driver_b}**.
+    
+    * **Velocity Profile Chart:** Look at the straightaways; parallel lines show clean aerodynamic efficiency and engine limits. Diverging slopes entering corners uncover variances in braking threshold aggression.
+    * **Throttle Input Matrix:** Look for stepped steps to spot aerodynamic stabilization or fuel management. Sharp vertical rises profile excellent exit traction control on the apex lines.
+    * **Performance Gap Delta Line:** Tracks relative time differences down to the individual meter. An ascending green trend means **{driver_a}** is pulling away; a descending trend means **{driver_b}** is reclaiming the pacing deficit.
     """)
 
 with col_right:
-    st.info("### 🏗️ Data Pipeline Architecture (Technical/Data Quality)")
+    st.info("### 🏗️ Data Pipeline Architecture (Technical Overview)")
     st.markdown("""
-    This system implements a decoupled transformation framework to handle low-frequency telemetry constraints and safeguard platform interaction.
-
-    * **Lineage Integrity & Fault Isolation:** Free public REST APIs enforce tight rate limits. If traffic throttles, a conditional governance loop catches errors, hides empty charts, and flags a blue aviso to activate the local sandbox without crashing.
-    * **Interactive Emulation Engine:** Turning on **Demo Mode** activates an offline simulator. It processes deterministic, driver-ID seeded math algorithms to output shifting trajectories, ensuring comprehensive structural evaluation.
-    * **Spatial Normalization Calculus:** Vehicle sensors capture data over raw time indices. To construct a standardized spatial footprint, the core engine converts velocity metrics and processes a sequential numerical integration.
+    This framework implements a decoupled transformation process to eliminate client connectivity overhead and enforce data security.
+    
+    * **Matchup Correlation ($r$-Score):** Values near $1.00$ indicate identical driving lines; lower scores show different corner approaches or lift-and-coast techniques.
+    * **Lineage Integrity Loop:** Free public REST APIs enforce tight request thresholds. If traffic blocks, a defensive loop catches errors, drops blank charts, and flags a notice to run the offline simulation safely.
+    * **Spatial Normalization Engine:** Vehicle metrics log against raw timestamps. To construct a standardized spatial map, the pipeline converts velocity arrays and applies sequential rolling Riemann integration.
     """)
-
-# Math Calculus Section
-st.markdown("---")
-st.markdown("### 🧮 Data Lineage Calculus & System Validation Matrix")
-
-math_col, table_col = st.columns([4, 5])
-
-with math_col:
-    st.markdown("#### **Spatial Normalization Operations**")
-    st.latex(r"v_{m/s} = \frac{v_{km/h}}{3.6} \quad \lhd \text{ Velocity Metric Vector}")
-    st.latex(r"\Delta t_i = t_i - t_{i-1} \quad \lhd \text{ Temporal Sampling Period}")
-    st.latex(r"d_n = \sum_{i=1}^{n} \left( v_{m/s, i} \times \Delta t_i \right) \quad \lhd \text{ Riemann Numerical Integration}")
-    st.latex(r"t_{B, \text{interp}} = \text{Interp}(d_A, d_B, t_B) \implies \Delta t_n = t_{A, n} - t_{B, \text{interp}, n} \quad \lhd \text{ 1D Linear Interpolation}")
-
-with table_col:
-    st.markdown("#### **Pipeline Component Governance Framework**")
-    governance_matrix = {
-        "Subsystem Matrix": ["Inbound Extraction Engine", "Spatial Processing Core", "Subplot Visual Layer"],
-        "Functional Governance Protocol": [
-            "REST JSON Polling with 5-second connection constraints",
-            "NumPy Vector Alignment & 1D Array Interpolation",
-            "Conditional Plotly Dark-Canvas Context Handlers"
-        ],
-        "Exception Isolation Strategy": [
-            "Intercept network failures and pass clean lineage states",
-            "Enforce strict coordinate sorting to drop skew anomalies",
-            "Drop charts dynamically and deploy interactive Demo Toggles"
-        ]
-    }
-    st.table(pd.DataFrame(governance_matrix))
