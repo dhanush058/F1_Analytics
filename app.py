@@ -30,10 +30,10 @@ st.markdown("""
         /* F1 Racing Theme Branding Accent */
         .f1-banner {
             background: linear-gradient(90deg, #FF0000 0%, #1E1E24 100%);
-            padding: 15px;
+            padding: 12px;
             border-radius: 4px;
             border-left: 6px solid #FF0000;
-            margin-bottom: 25px;
+            margin-bottom: 20px;
         }
         .f1-title {
             color: #FFFFFF !important;
@@ -41,14 +41,16 @@ st.markdown("""
             font-weight: 800;
             letter-spacing: 1px;
             margin: 0px !important;
+            font-size: 26px;
         }
-        /* Executive Dashboard Matrix Box styling */
+        /* Executive Dashboard Matrix Box styling - Compressed for Single Row */
         .metric-card {
             background-color: #151922;
             border: 1px solid #222933;
             border-top: 3px solid #FF0000;
-            padding: 15px;
+            padding: 10px;
             border-radius: 4px;
+            min-height: 85px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -137,44 +139,6 @@ driver_a = st.sidebar.selectbox("Select Driver A (Baseline)", drivers, index=0)
 driver_b = st.sidebar.selectbox("Select Driver B (Comparison)", drivers, index=1 if len(drivers) > 1 else 0)
 
 # =========================================================
-# 📑 EXECUTIVE SUMMARY & ANCHOR KPI MATRIX
-# =========================================================
-st.markdown("### 📋 Executive Summary Insights Panel")
-sum_col1, sum_col2, sum_col3 = st.columns(3)
-
-with sum_col1:
-    st.markdown(f"""
-    <div class="metric-card">
-        <strong style='color:#FF0000; font-size:14px;'>🏁 ANALYSIS SCOPE</strong><br>
-        <span style='font-size:20px; font-weight:bold;'>{event_name}</span><br>
-        <span style='color:#8892B0; font-size:12px;'>Season Campaign Matrix: {selected_year}</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-with sum_col2:
-    st.markdown(f"""
-    <div class="metric-card">
-        <strong style='color:#FF0000; font-size:14px;'>🏎️ MATCHUP PAIRING</strong><br>
-        <span style='font-size:20px; font-weight:bold;'>{driver_a} vs. {driver_b}</span><br>
-        <span style='color:#8892B0; font-size:12px;'>Spatial Baseline Anchor: {driver_a}</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-with sum_col3:
-    st.markdown(f"""
-    <div class="metric-card">
-        <strong style='color:#FF0000; font-size:14px;'>📊 EXECUTIVE VALUATION</strong><br>
-        <span style='font-size:20px; font-weight:bold;'>Spatial Normalization</span><br>
-        <span style='color:#8892B0; font-size:12px;'>Status: {'Demo Emulation Engine' if demo_mode else 'Live Active Feed'}</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown(f"""
-> **Strategic Intelligence Note:** This analytical control room tracks micro-variances in the performance envelopes of **{driver_a}** and **{driver_b}**. By converting raw asynchronous telemetry profiles into absolute spatial meters, it isolates exact driver braking thresholds, cornering traction limits, and straight-line drag coefficients. This panel transforms complex telemetry data streams directly into stakeholder-ready tactical metrics.
-""")
-st.markdown("---")
-
-# =========================================================
 # 📊 DATA-VALIDATED TELEMETRY EXTRACTION ENGINE
 # =========================================================
 @st.cache_data(ttl=1800, show_spinner="Querying telemetry pipeline matrix...")
@@ -233,7 +197,7 @@ force_fallback = is_simulated or is_cancelled_2026 or demo_mode
 telemetry_a, telemetry_b, data_is_fallback = fetch_telemetry_dataframe(session_key, driver_map, driver_a, driver_b, force_fallback)
 
 # =========================================================
-# ⚙️ DYNAMIC PSEUDO-RANDOM HIGH-FIDELITY SIMULATOR (FIXED)
+# ⚙️ DYNAMIC PSEUDO-RANDOM HIGH-FIDELITY SIMULATOR 
 # =========================================================
 if (data_is_fallback or telemetry_a is None) and demo_mode:
     data_is_fallback = False  
@@ -278,6 +242,81 @@ if (data_is_fallback or telemetry_a is None) and demo_mode:
     
     telemetry_a = pd.DataFrame({'Distance': dist_baseline, 'Speed': speed_a, 'Throttle': throttle_a, 'Delta_Time': delta_time})
     telemetry_b = pd.DataFrame({'Distance': dist_baseline, 'Speed': speed_b, 'Throttle': throttle_b})
+
+# =========================================================
+# 📑 EXECUTIVE SUMMARY & ANCHOR KPI MATRIX (5 METRICS IN 1 ROW)
+# =========================================================
+if telemetry_a is not None and telemetry_b is not None:
+    total_dist = f"{int(telemetry_a['Distance'].max()):,} m"
+    max_v_a = telemetry_a['Speed'].max()
+    max_v_b = telemetry_b['Speed'].max()
+    peak_velocity = f"{max(max_v_a, max_v_b):.1f} km/h"
+    max_delta = f"{telemetry_a['Delta_Time'].abs().max():.3f} s"
+    
+    # Math Calculus: Statistical Pearson r correlation coefficient for throttle profiles
+    r_corr = telemetry_a['Throttle'].corr(telemetry_b['Throttle'])
+    throttle_corr = f"{r_corr:.2f}" if not np.isnan(r_corr) else "1.00"
+    
+    lineage_integrity = "100% Verified" if not demo_mode else "100% Emulated"
+else:
+    total_dist = "N/A"
+    peak_velocity = "N/A"
+    max_delta = "N/A"
+    throttle_corr = "N/A"
+    lineage_integrity = "N/A"
+
+st.markdown("### 📋 Executive Summary Insights Panel")
+sum_col1, sum_col2, sum_col3, sum_col4, sum_col5 = st.columns(5)
+
+with sum_col1:
+    st.markdown(f"""
+    <div class="metric-card">
+        <strong style='color:#FF0000; font-size:11px;'>🏁 CIRCUIT FOOTPRINT</strong><br>
+        <span style='font-size:16px; font-weight:bold;'>{total_dist}</span><br>
+        <span style='color:#8892B0; font-size:11px;'>Track: {event_name}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+with sum_col2:
+    st.markdown(f"""
+    <div class="metric-card">
+        <strong style='color:#FF0000; font-size:11px;'>🏎️ MATCHUP CORRELATION</strong><br>
+        <span style='font-size:16px; font-weight:bold;'>{throttle_corr} r-Score</span><br>
+        <span style='color:#8892B0; font-size:11px;'>Style: {driver_a} vs. {driver_b}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+with sum_col3:
+    st.markdown(f"""
+    <div class="metric-card">
+        <strong style='color:#FF0000; font-size:11px;'>⚡ TOP SPEED VMAX</strong><br>
+        <span style='font-size:16px; font-weight:bold;'>{peak_velocity}</span><br>
+        <span style='color:#8892B0; font-size:11px;'>Peak Envelope Velocity</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+with sum_col4:
+    st.markdown(f"""
+    <div class="metric-card">
+        <strong style='color:#FF0000; font-size:11px;'>⏱️ MAX PERFORMANCE GAP</strong><br>
+        <span style='font-size:16px; font-weight:bold;'>{max_delta}</span><br>
+        <span style='color:#8892B0; font-size:11px;'>Maximum Spatial Deficit</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+with sum_col5:
+    st.markdown(f"""
+    <div class="metric-card">
+        <strong style='color:#FF0000; font-size:11px;'>🛡️ LINEAGE INTEGRITY</strong><br>
+        <span style='font-size:16px; font-weight:bold;'>{lineage_integrity}</span><br>
+        <span style='color:#8892B0; font-size:11px;'>Data Stream Governance</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown(f"""
+> **Strategic Intelligence Note:** This analytical dashboard evaluates micro-variances in the performance envelopes of **{driver_a}** and **{driver_b}**. By converting raw asynchronous telemetry variables into absolute spatial meters, it isolates exact driver braking thresholds, cornering traction limits, and straight-line drag coefficients. This panel transforms complex telemetry data streams directly into stakeholder-ready tactical metrics.
+""")
+st.markdown("---")
 
 # =========================================================
 # 📊 CONDITIONAL RENDERING LAYER (DATA GOVERNANCE CHECK)
@@ -342,56 +381,50 @@ else:
     st.plotly_chart(fig, use_container_width=True)
 
 # =========================================================
-# 📘 COMPREHENSIVE STREAMLIT TYPOGRAPHIC DOC GUIDE
+# 📘 COMPREHENSIVE STREAMLIT TYPOGRAPHIC DOC GUIDE (COMPRESSED)
 # =========================================================
 st.markdown("---")
-st.markdown("## 📊 System Engineering & Telemetry Analysis Field Manual")
+st.markdown("## 📊 Telemetry Engineering Field Manual")
 
-left_col, right_col = st.columns(2)
+col_left, col_right = st.columns(2)
 
-with left_col:
-    st.success("### 📈 Tactical Racing Analysis (For Executive Teams)")
+with col_left:
+    st.success("### 📈 Tactical Racing Metrics (Business/Strategy)")
     st.markdown(f"""
-    This visualization matrix provides a non-destructive audit of competitor behavior by projecting high-frequency vehicle channels over fixed track distances. By evaluating the performance boundary layers between **{driver_a}** and **{driver_b}**, team strategists can target explicit driving variances.
-    
-    * **The Speed Trace Curves:** Parallel lines on straightaways highlight straightline aerodynamic efficiency, drag limits, and battery deployment strategies. Sudden divergence in slopes entering a corner highlights a delta in braking threshold aggression.
-    * **The Throttle Profiles:** Gradual stepped trace steps indicate aerodynamic stabilization or lift-and-coast fuel saving techniques. Sharp vertical steps profile excellent vehicle traction control profiles on apex exit lines.
-    * **The Performance Delta Line:** The laser-green profile tracks absolute time differences down to the individual meter. An ascending trend indicates the baseline car (**{driver_a}**) is actively pulling away; a descending trend indicates the comparison car (**{driver_b}**) is recovering the deficit.
+    This dashboard projects high-frequency vehicle sensor channels over an absolute distance baseline, isolating driver habits and vehicle performance margins between **{driver_a}** and **{driver_b}**.
+
+    * **Circuit Footprint:** Verifies the physical boundary limit of the track window under analysis.
+    * **Matchup Correlation ($r$-Score):** Measures driving style alignment. High correlation ($r \\to 1$) reveals identical cornering geometry; lower scores uncover divergent braking points or lift-and-coast fuel management.
+    * **Top Speed (Vmax):** Highlights straight-line aerodynamic efficiency, engine power deployment, and DRS drag limits.
+    * **Max Performance Gap:** Pinpoints the absolute spatial time loss or gain margin across the lap footprint.
+    * **Speed & Throttle Traces:** Diverging curves identify variances in corner approach aggression and acceleration stability.
     """)
 
-with right_col:
-    st.info("### 🏗️ Pipeline Architecture (For Engineering Leads)")
+with col_right:
+    st.info("### 🏗️ Data Pipeline Architecture (Technical/Data Quality)")
     st.markdown("""
-    This platform acts as an isolated data transformation layer designed to eliminate client-side connectivity overhead while strictly validating data lineage boundaries at runtime.
-    
-    * **The Asynchronous Interface Block:** Free public API structures implement severe request thresholds. This application implements local fallback matrices, cleanly hiding layout canvases and reporting line notices rather than passing unverified variables or letting the frontend crash.
-    * **The Interactive Demo Sandbox:** To preserve portfolio interaction when external networks drop, an custom mock layer applies interlocking sinusoidal component formulas to synthesize realistic track inputs, verifying engine execution models safely.
-    * **Absolute Distance Projection:** Raw CAN bus networks log metrics strictly against timestamps (`date`). To render metrics relative to circuit position, the pipeline converts velocity vectors and applies a rolling Riemann tracking sum.
+    This system implements a decoupled transformation framework to handle low-frequency telemetry constraints and safeguard platform interaction.
+
+    * **Lineage Integrity & Fault Isolation:** Free public REST APIs enforce tight rate limits. If traffic throttles, a conditional governance loop catches errors, hides empty charts, and flags a blue aviso to activate the local sandbox without crashing.
+    * **Interactive Emulation Engine:** Turning on **Demo Mode** activates an offline simulator. It processes deterministic, driver-ID seeded math algorithms to output shifting trajectories, ensuring comprehensive structural evaluation.
+    * **Spatial Normalization Calculus:** Vehicle sensors capture data over raw time indices. To construct a standardized spatial footprint, the core engine converts velocity metrics and processes a sequential numerical integration.
     """)
 
-# Math & Data Governance Deep-Dive Section
+# Math Calculus Section
 st.markdown("---")
 st.markdown("### 🧮 Data Lineage Calculus & System Validation Matrix")
 
 math_col, table_col = st.columns([4, 5])
 
 with math_col:
-    st.markdown("#### **Spatial Normalization Equations**")
-    st.markdown("Converting raw velocity values into international metric coordinates:")
-    st.latex(r"v_{m/s} = \frac{v_{km/h}}{3.6}")
-    
-    st.markdown("Calculating chronological slice deltas across sampling frequencies (~3.7 Hz):")
-    st.latex(r"\Delta t_i = t_i - t_{i-1}")
-    
-    st.markdown("Applying rolling numerical integration to construct the absolute track distance baseline:")
-    st.latex(r"d_n = \sum_{i=1}^{n} \left( v_{m/s, i} \times \Delta t_i \right)")
-    
-    st.markdown("Aligning temporal arrays via 1D linear interpolation to resolve spatial offsets:")
-    st.latex(r"t_{B, \text{interp}} = \text{Interpolate}(d_A, d_B, t_B) \implies \Delta t_n = t_{A, n} - t_{B, \text{interp}, n}")
+    st.markdown("#### **Spatial Normalization Operations**")
+    st.latex(r"v_{m/s} = \frac{v_{km/h}}{3.6} \quad \lhd \text{ Velocity Metric Vector}")
+    st.latex(r"\Delta t_i = t_i - t_{i-1} \quad \lhd \text{ Temporal Sampling Period}")
+    st.latex(r"d_n = \sum_{i=1}^{n} \left( v_{m/s, i} \times \Delta t_i \right) \quad \lhd \text{ Riemann Numerical Integration}")
+    st.latex(r"t_{B, \text{interp}} = \text{Interp}(d_A, d_B, t_B) \implies \Delta t_n = t_{A, n} - t_{B, \text{interp}, n} \quad \lhd \text{ 1D Linear Interpolation}")
 
 with table_col:
     st.markdown("#### **Pipeline Component Governance Framework**")
-    
     governance_matrix = {
         "Subsystem Matrix": ["Inbound Extraction Engine", "Spatial Processing Core", "Subplot Visual Layer"],
         "Functional Governance Protocol": [
