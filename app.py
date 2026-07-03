@@ -20,7 +20,7 @@ def fetch_api_json(url):
     return None
 
 # =========================================================
-# 🏎️ THE ORIGINAL UI CONFIGURATION (24 GRAND PRIX CALENDAR)
+# 🏎️ THE ORIGINAL UI CONFIGURATION (2026 CALENDAR FIXED)
 # =========================================================
 st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
 
@@ -68,13 +68,14 @@ demo_mode = st.sidebar.toggle(
 
 selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=1)
 
+# Chronologically Correct 2026 Formula 1 Schedule mapping
 race_options = {
     1: "Bahrain Grand Prix", 2: "Saudi Arabian Grand Prix", 3: "Australian Grand Prix",
-    4: "Japanese Grand Prix", 5: "Chinese Grand Prix", 6: "Miami Grand Prix",
-    7: "Emilia Romagna Grand Prix", 8: "Monaco Grand Prix", 9: "Canadian Grand Prix",
-    10: "Spanish Grand Prix", 11: "Austrian Grand Prix", 12: "British Grand Prix",
-    13: "Hungarian Grand Prix", 14: "Belgian Grand Prix", 15: "Dutch Grand Prix",
-    16: "Italian Grand Prix", 17: "Azerbaijan Grand Prix", 18: "Singapore Grand Prix",
+    4: "Chinese Grand Prix", 5: "Japanese Grand Prix", 6: "Miami Grand Prix",
+    7: "Canadian Grand Prix", 8: "Monaco Grand Prix", 9: "Barcelona-Catalunya Grand Prix",
+    10: "Austrian Grand Prix", 11: "British Grand Prix", 12: "Belgian Grand Prix",
+    13: "Hungarian Grand Prix", 14: "Dutch Grand Prix", 15: "Italian Grand Prix",
+    16: "Spanish Grand Prix (Madrid)", 17: "Azerbaijan Grand Prix", 18: "Singapore Grand Prix",
     19: "United States Grand Prix", 20: "Mexico City Grand Prix", 21: "São Paulo Grand Prix",
     22: "Las Vegas Grand Prix", 23: "Qatar Grand Prix", 24: "Abu Dhabi Grand Prix"
 }
@@ -101,10 +102,11 @@ selected_session_label = st.sidebar.selectbox(
 )
 selected_session_api_name = session_options[selected_session_label]
 
+# Map targeting matching keywords inside OpenF1 string locations
 location_map = {
-    1: "Sakhir", 2: "Jeddah", 3: "Melbourne", 4: "Suzuka", 5: "Shanghai", 6: "Miami",
-    7: "Imola", 8: "Monaco", 9: "Montreal", 10: "Barcelona", 11: "Spielberg", 12: "Silverstone",
-    13: "Budapest", 14: "Spa", 15: "Zandvoort", 16: "Monza", 17: "Baku", 18: "Marina Bay",
+    1: "Sakhir", 2: "Jeddah", 3: "Melbourne", 4: "Shanghai", 5: "Suzuka", 6: "Miami",
+    7: "Montreal", 8: "Monaco", 9: "Barcelona", 10: "Spielberg", 11: "Silverstone", 12: "Spa",
+    13: "Budapest", 14: "Zandvoort", 15: "Monza", 16: "Madrid", 17: "Baku", 18: "Marina Bay",
     19: "Austin", 20: "Mexico City", 21: "São Paulo", 22: "Las Vegas", 23: "Lusail", 24: "Yas Marina"
 }
 target_location = location_map[selected_round]
@@ -255,7 +257,7 @@ if (data_is_fallback or telemetry_a is None) and demo_mode:
     telemetry_b = pd.DataFrame({'Distance': dist_baseline, 'Speed': speed_b, 'Throttle': throttle_b})
 
 # =========================================================
-# 📑 EXECUTIVE SUMMARY & ANCHOR KPI MATRIX (5 METRICS IN 1 ROW)
+# 📑 EXECUTIVE SUMMARY & ANCHOR KPI MATRIX (5 METRICS)
 # =========================================================
 if telemetry_a is not None and telemetry_b is not None:
     total_dist = f"{int(telemetry_a['Distance'].max()):,} m"
@@ -399,7 +401,7 @@ else:
     st.plotly_chart(fig, use_container_width=True)
 
 # =========================================================
-# 📘 COMPREHENSIVE STREAMLIT TYPOGRAPHIC DOC GUIDE (COMPRESSED)
+# 📘 COMPREHENSIVE STREAMLIT TYPOGRAPHIC DOC GUIDE
 # =========================================================
 st.markdown("---")
 st.markdown("## 📊 Telemetry Engineering Field Manual")
