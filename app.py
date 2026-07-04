@@ -12,7 +12,7 @@ from plotly.subplots import make_subplots
 def fetch_api_json(url):
     """Queries public REST endpoints with strict timeout constraints."""
     try:
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, timeout=10)
         if response.status_code == 200:
             return response.json()
     except Exception:
@@ -77,7 +77,7 @@ seasonal_schedule = {
             22: "Las Vegas Grand Prix", 23: "Qatar Grand Prix", 24: "Abu Dhabi Grand Prix"
         },
         "locations": {
-            1: "Melbourne", 2: "Shanghai", 3: "Suzuka", 4: "Sakhir", 5: "Jeddah", 6: "Miami",
+            1: "Melbourne", 2: "Shanghai", 3: "Suzuka", 4: "Sakhir", 5: "Jedd导", 6: "Miami",
             7: "Montreal", 8: "Monaco", 9: "Barcelona", 10: "Spielberg", 11: "Silverstone", 12: "Spa",
             13: "Budapest", 14: "Zandvoort", 15: "Monza", 16: "Madrid", 17: "Baku", 18: "Marina Bay",
             19: "Austin", 20: "Mexico City", 21: "São Paulo", 22: "Las Vegas", 23: "Lusail", 24: "Yas Marina"
@@ -191,9 +191,9 @@ driver_a = st.sidebar.selectbox("Select Driver A (Baseline)", drivers, index=0)
 driver_b = st.sidebar.selectbox("Select Driver B (Comparison)", drivers, index=1 if len(drivers) > 1 else 0)
 
 # =========================================================
-# 📊 DATA-VALIDATED TELEMETRY EXTRACTION ENGINE
+# 📊 DATA-VALIDATED TELEMETRY EXTRACTION ENGINE (UN-TRUNCATED STREAM)
 # =========================================================
-@st.cache_data(ttl=1800, show_spinner="Querying telemetry pipeline matrix...")
+@st.cache_data(ttl=1800, show_spinner="Streaming full session records from OpenF1 server matrix...")
 def fetch_telemetry_dataframe(s_key, s_start, d_map, d_a, d_b, fallback_active):
     if fallback_active or not s_key or not d_map or d_a not in d_map or d_b not in d_map:
         return None, None, True
@@ -203,16 +203,18 @@ def fetch_telemetry_dataframe(s_key, s_start, d_map, d_a, d_b, fallback_active):
         num_b = d_map[d_b]
         date_filter = f"&date>={s_start}" if s_start else ""
         
+        # EXTENDED TIMEOUT: Shifted timeout to 30 seconds to stream full telemetry sets
         url_a = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_a)}{date_filter}"
-        res_a = requests.get(url_a, timeout=5).json()
+        res_a = requests.get(url_a, timeout=30).json()
         
         url_b = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_b)}{date_filter}"
-        res_b = requests.get(url_b, timeout=5).json()
+        res_b = requests.get(url_b, timeout=30).json()
         
         if not res_a or not res_b or len(res_a) < 20 or len(res_b) < 20:
             return None, None, True
             
-        df_a = pd.DataFrame(res_a).head(350)
+        # PROCESSED COMPLETELY: Parses the entire array trace without head truncation
+        df_a = pd.DataFrame(res_a)
         tel_a = pd.DataFrame()
         tel_a['Speed'] = df_a['speed'].astype(float)
         tel_a['Throttle'] = df_a['throttle'].astype(float) if 'throttle' in df_a.columns else 90.0
@@ -221,7 +223,7 @@ def fetch_telemetry_dataframe(s_key, s_start, d_map, d_a, d_b, fallback_active):
         tel_a['Distance'] = (tel_a['Speed'] / 3.6 * time_deltas_a).cumsum()
         tel_a['Time_Elapsed'] = (time_deltas_a).cumsum()
 
-        df_b = pd.DataFrame(res_b).head(350)
+        df_b = pd.DataFrame(res_b)
         tel_b = pd.DataFrame()
         tel_b['Speed'] = df_b['speed'].astype(float)
         tel_b['Throttle'] = df_b['throttle'].astype(float) if 'throttle' in df_b.columns else 88.0
