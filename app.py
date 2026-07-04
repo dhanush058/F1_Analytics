@@ -6,62 +6,67 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # =========================================================
-# ⚙️ SECURE CACHE LAYER
+# ⚙️ SECURE CACHE LAYER (NO REFRESH FLICKER)
 # =========================================================
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_api_json(url):
     try:
         response = requests.get(url, timeout=10)
-        return response.json() if response.status_code == 200 else None
+        if response.status_code == 200:
+            return response.json()
     except:
         return None
+    return None
 
 # =========================================================
-# 🏎️ APP LAYOUT & CONFIGURATION
-# =========================================================
-st.set_page_config(page_title="F1 Performance Vault", layout="wide")
-
-# Sidebar and variables
-selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=0)
-# ... [Keep your TRACK_METRICS_DB, seasonal_schedule, and selection logic here] ...
-
-# INITIALIZE session_key safely
-session_key = None 
-
-# Resolve session
-session_url = f"https://api.openf1.org/v1/sessions?year={selected_year}"
-sessions = fetch_api_json(session_url)
-if sessions:
-    # Resolve your specific session_key here
-    # session_key = ... (your existing logic)
-
-# =========================================================
-# 📊 EVENT-DRIVEN DATA ENGINE (NO AUTO-REFRESH)
+# 🏎️ ENGINE FUNCTIONS
 # =========================================================
 def check_session_status(s_key):
-    if s_key is None: return "no_key"
+    if s_key is None: 
+        return "no_key"
     data = fetch_api_json(f"https://api.openf1.org/v1/sessions?session_key={s_key}")
     return data[0].get('status') if data else "unknown"
 
-# SAFE EXECUTION GUARD: Only run logic if session_key is resolved
+# Define your data fetching function here...
+def fetch_calibrated_telemetry(s_key, d_map, d_a, d_b, target_length):
+    # Ensure this block is indented 4 spaces
+    # ... your existing logic ...
+    return None, None, "SUCCESS"
+
+# =========================================================
+# 🏎️ APP LAYOUT & LOGIC
+# =========================================================
+st.set_page_config(page_title="F1 Performance Vault", layout="wide")
+
+# ... [Keep your TRACK_METRICS_DB and seasonal_schedule here] ...
+
+# Resolve session_key
+session_key = None 
+# ... [Your logic to resolve session_key] ...
+
+# =========================================================
+# 📊 EVENT-DRIVEN DATA ENGINE (FROZEN STATE)
+# =========================================================
+# The 'if' block is now correctly closed and indented
 if session_key is not None:
     status = check_session_status(session_key)
     
-    if status == "finished" or demo_mode:
-        # Load data only once
-        telemetry_a, telemetry_b, engine_status = fetch_calibrated_telemetry(...)
-        st.session_state.data_cache = (telemetry_a, telemetry_b)
-    else:
-        st.info(f"⏳ **Race In Progress:** Data will finalize after the session concludes. (Current Status: {status})")
-        telemetry_a, telemetry_b = st.session_state.get("data_cache", (None, None))
+    # Logic to fetch only once per load
+    if "telemetry_data" not in st.session_state:
+        telemetry_a, telemetry_b, engine_status = fetch_calibrated_telemetry(session_key, driver_map, driver_a, driver_b, 5000)
+        st.session_state.telemetry_data = (telemetry_a, telemetry_b)
+        st.session_state.engine_status = engine_status
+    
+    telemetry_a, telemetry_b = st.session_state.telemetry_data
 else:
-    st.error("❌ Session could not be resolved. Please check your selections.")
+    st.error("Session key not resolved.")
+    telemetry_a, telemetry_b = None, None
 
 # =========================================================
 # 📈 STATIC RENDERING (NO FRAGMENT = NO DIMMING)
 # =========================================================
-if telemetry_a is not None and telemetry_b is not None:
-    # ... [Insert your Plotly and Metric card code here] ...
-    # This will render exactly once and stay frozen.
+if telemetry_a is not None:
+    # Render Plotly charts here...
+    st.write("Dashboard Rendered - Frozen State Active")
 else:
-    st.write("Awaiting data finalization...")
+    st.write("Awaiting data...")
