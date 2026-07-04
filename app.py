@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # =========================================================
-# 🏎️ MASTER GLOBAL TRACK BASELINE DATA VASE
+# 🏎️ MASTER GLOBAL TRACK SPECIFICATION DATABASE
 # =========================================================
 TRACK_METRICS_DB = {
     "melbourne": {"length": 5278, "corners": 14},
@@ -94,9 +94,9 @@ seasonal_schedule = {
 }
 
 # =========================================================
-# ⚙️ HIGH FREQUENCY CACHE NETWORKS
+# ⚙️ FAST CACHE LAYER TERMINALS
 # =========================================================
-@st.cache_data(ttl=5, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner=False)
 def fetch_api_json(url):
     try:
         response = requests.get(url, timeout=10)
@@ -107,45 +107,13 @@ def fetch_api_json(url):
     return None
 
 # =========================================================
-# 🏎️ APP LAYOUT IMPLEMENTATION
+# 🏎️ APP VIEWPORT COMPILING
 # =========================================================
-st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
-
-st.markdown("""
-    <style>
-        .f1-banner {
-            background: linear-gradient(90deg, #FF0000 0%, #1E1E24 100%);
-            padding: 12px;
-            border-radius: 4px;
-            border-left: 6px solid #FF0000;
-            margin-bottom: 20px;
-        }
-        .f1-title {
-            color: #FFFFFF !important;
-            font-family: 'Titillium Web', sans-serif;
-            font-weight: 800;
-            letter-spacing: 1px;
-            margin: 0px !important;
-            font-size: 26px;
-        }
-        .metric-card {
-            background-color: #151922;
-            border: 1px solid #222933;
-            border-top: 3px solid #FF0000;
-            padding: 10px;
-            border-radius: 4px;
-            min-height: 85px;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-st.markdown('<div class="f1-banner"><h1 class="f1-title">🏎️ FORMULA 1 SPATIAL TELEMETRY PERFORMANCE ANALYZER</h1></div>', unsafe_allow_html=True)
-
 st.sidebar.markdown("### 🛠️ Portfolio Control Panel")
 demo_mode = st.sidebar.toggle(
     "🖥️ Enable Simulated Demo Mode", 
     value=False, 
-    help="Toggle this on to force structural preview profiles if the third-party network drops packet records."
+    help="Toggle this on to view clean dashboard shapes if the open public server drops telemetry packets."
 )
 
 selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=0)
@@ -160,20 +128,11 @@ selected_round = st.sidebar.selectbox(
     format_func=lambda x: f"Round {x}: {race_options[x]}"
 )
 
-session_options = {
-    "Race": "Race", "Qualifying": "Qualifying",
-    "FP1": "Practice 1", "FP2": "Practice 2", "FP3": "Practice 3",
-    "Sprint": "Sprint", "Sprint Qualifying": "Sprint Qualifying"
-}
-selected_session_label = st.sidebar.selectbox("Select Session Type", list(session_options.keys()), index=0)
-selected_session_api_name = session_options[selected_session_label]
+selected_session_label = st.sidebar.selectbox("Select Session Type", ["Race", "Qualifying", "FP1", "FP2", "FP3"], index=0)
 
 target_location = location_map[selected_round]
 event_name = race_options[selected_round]
-
-track_key = target_location.lower()
-track_spec = TRACK_METRICS_DB.get(track_key, {"length": 5000, "corners": 15})
-true_circuit_length = track_spec["length"]
+true_circuit_length = TRACK_METRICS_DB.get(target_location.lower(), {"length": 5000})["length"]
 
 # =========================================================
 # 🌐 OPENF1 METADATA RESOLVER
@@ -184,7 +143,7 @@ driver_map = {}
 is_simulated = True
 
 if not demo_mode:
-    session_url = f"https://api.openf1.org/v1/sessions?year={selected_year}&session_name={selected_session_api_name}"
+    session_url = f"https://api.openf1.org/v1/sessions?year={selected_year}&session_name={selected_session_label}"
     sessions = fetch_api_json(session_url)
 
     if sessions:
@@ -220,9 +179,9 @@ driver_a = st.sidebar.selectbox("Select Driver A (Baseline)", drivers, index=0)
 driver_b = st.sidebar.selectbox("Select Driver B (Comparison)", drivers, index=1 if len(drivers) > 1 else 0)
 
 # =========================================================
-# 📊 PRODUCTION LOGIC INGESTION PIPELINE
+# 📊 PRECISION CALIBRATED TELEMETRY PIPELINE ENGINE
 # =========================================================
-def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_active):
+def fetch_calibrated_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_active):
     if fallback_active or not s_key or not d_map or d_a not in d_map or d_b not in d_map:
         return None, None, "MISSING_DATA"
 
@@ -244,9 +203,6 @@ def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         start_time_str = fastest_lap_row['date_start']
         duration = fastest_lap_row['lap_duration']
         
-        if not start_time_str or not duration:
-            return None, None, "EMPTY_LAP_METRICS"
-            
         start_dt = pd.to_datetime(start_time_str)
         end_dt = start_dt + pd.Timedelta(seconds=float(duration))
         time_filter = f"&date>={start_dt.strftime('%Y-%m-%dT%H:%M:%S')}&date<={end_dt.strftime('%Y-%m-%dT%H:%M:%S')}"
@@ -265,7 +221,7 @@ def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         df_a['date'] = pd.to_datetime(df_a['date'])
         df_b['date'] = pd.to_datetime(df_b['date'])
         
-        # FIXED: Time synchronization logic bounds matches. Drops trailing empty data points instantly.
+        # FIXED: Synchronous Timeline Slicing. Truncates lagging rows to completely stop 70s delta leakage.
         last_common_date = min(df_a['date'].max(), df_b['date'].max())
         first_common_date = max(df_a['date'].min(), df_b['date'].min())
         
@@ -276,6 +232,7 @@ def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
             return None, None, "ASYNC_STREAM_GAP"
             
         df_merged = pd.merge_asof(df_a, df_b, on='date', suffixes=('_a', '_b'), direction='nearest')
+        df_merged = df_merged.dropna(subset=['speed_a', 'speed_b'])
         
         time_deltas = df_merged['date'].diff().dt.total_seconds().fillna(0.24)
         time_deltas = np.where((time_deltas < 0.005) | (time_deltas > 5.0), 0.24, time_deltas)
@@ -283,7 +240,7 @@ def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         raw_dist_a = (df_merged['speed_a'].astype(float) / 3.6 * time_deltas).cumsum()
         raw_dist_b = (df_merged['speed_b'].astype(float) / 3.6 * time_deltas).cumsum()
         
-        distance_grid = np.linspace(0, target_length, len(df_merged))
+        distance_grid = np.linspace(0, target_length, 350)
         
         speed_a_aligned = np.interp(distance_grid, (raw_dist_a / raw_dist_a.max()) * target_length, df_merged['speed_a'].astype(float))
         throttle_a_aligned = np.interp(distance_grid, (raw_dist_a / raw_dist_a.max()) * target_length, df_merged['throttle_a'].astype(float) if 'throttle_a' in df_merged.columns else 95.0)
@@ -295,6 +252,10 @@ def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         time_b_aligned = np.cumsum(1 / (np.maximum(speed_b_aligned, 15) / 3.6))
         delta_time = time_a_aligned - time_b_aligned
         
+        # Drops asymmetric telemetry calculation if data drift yields an impossible metric profile
+        if np.abs(delta_time).max() > 18.0:
+            return None, None, "CORRUPTED_STREAM_GAP"
+            
         tel_a = pd.DataFrame({'Distance': distance_grid, 'Speed': speed_a_aligned, 'Throttle': throttle_a_aligned, 'Delta_Time': delta_time})
         tel_b = pd.DataFrame({'Distance': distance_grid, 'Speed': speed_b_aligned, 'Throttle': throttle_b_aligned})
         
@@ -305,27 +266,26 @@ def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
 force_fallback = is_simulated or demo_mode
 
 # =========================================================
-# 💎 LIVE VIEWPORT FRAGMENT CONTAINER (FIXED API CRASH)
+# 💎 NON-DIMMING FRAGMENT CANVAS WRAPPER (ERROR FIXED)
 # =========================================================
 @st.fragment(run_every=10)
-def render_live_telemetry_canvas():
-    telemetry_a, telemetry_b, engine_status = fetch_authentic_telemetry(
+def execute_live_viewport_render():
+    telemetry_a, telemetry_b, engine_status = fetch_calibrated_telemetry(
         session_key, driver_map, driver_a, driver_b, true_circuit_length, force_fallback
     )
-
-    # ⚙️ MULTI-INDEXED SIMULATOR GENERATION CORE
+    
+    # DYNAMIC TRACK HARMONIZED SIMULATOR BACKUP
     if engine_status != "SUCCESS" or telemetry_a is None:
-        is_simulated_active = True
         driver_ids = {"VER": 33, "HAM": 44, "NOR": 4, "LEC": 16, "RUS": 63, "PIA": 81, "ALO": 14, "ALB": 23}
         id_a, id_b = driver_ids.get(driver_a, 10), driver_ids.get(driver_b, 20)
         
-        track_seed = int(selected_round) + len(selected_session_label) + int(selected_year)
+        track_seed = int(selected_round) + int(selected_year)
         np.random.seed(track_seed)
         
         dist_baseline = np.linspace(0, true_circuit_length, 350)
         speed_base = 280.0
-        for i in range(track_spec.get("corners", 15)):
-            corner_pos = (true_circuit_length / (track_spec.get("corners", 15) + 1)) * (i + 1) + np.random.uniform(-100, 100)
+        for i in range(12):
+            corner_pos = (true_circuit_length / 13) * (i + 1) + np.random.uniform(-100, 100)
             speed_base -= 95 * np.exp(-((dist_baseline - corner_pos) / 190)**2)
             
         np.random.seed(id_a + track_seed)
@@ -336,31 +296,27 @@ def render_live_telemetry_canvas():
         speed_b = np.clip((np.roll(speed_base, int(np.random.uniform(-4, 4))) * np.random.uniform(0.97, 1.03)) + np.random.normal(0, 1.2, 350), 60, 340)
         throttle_b = np.clip(100 - (310 - speed_b) * 1.1 + np.random.normal(0, 1.5, 350), 0, 100)
         
-        delta_time = (np.cumsum(1 / (np.maximum(speed_a, 15) / 3.6)) - np.cumsum(1 / (np.maximum(speed_b, 15) / 3.6))) * 0.5
+        delta_time = np.cumsum(1 / (np.maximum(speed_a, 15) / 3.6)) - np.cumsum(1 / (np.maximum(speed_b, 15) / 3.6))
         
-        telemetry_a = pd.DataFrame({'Distance': dist_baseline, 'Speed': speed_a, 'Throttle': throttle_a, 'Delta_Time': delta_time})
+        telemetry_a = pd.DataFrame({'Distance': dist_baseline, 'Speed': speed_a, 'Throttle': throttle_a, 'Delta_Time': delta_time * 1.5})
         telemetry_b = pd.DataFrame({'Distance': dist_baseline, 'Speed': speed_b, 'Throttle': throttle_b})
         lineage_integrity = "100% Emulated Core"
+        
+        # FIXED: Status alerts render safely inside the fragment grid layout to stop StreamlitAPIException crashes
+        st.caption("🖥️ Pipeline Framework: Sandbox Simulator Active")
     else:
-        is_simulated_active = False
+        st.caption("✅ Pipeline Framework: Live Server Online")
         lineage_integrity = "100% Authentic API"
 
-    # Executive Ingestion Panels Calculation
+    # KPI Summary Cards Formulation
     total_dist = f"{int(telemetry_a['Distance'].max()):,} m"
     max_v_a = telemetry_a['Speed'].max()
     max_v_b = telemetry_b['Speed'].max()
 
     peak_velocity = f"{max_v_a:.1f} km/h ({driver_a})" if max_v_a > max_v_b else f"{max_v_b:.1f} km/h ({driver_b})"
     max_delta = f"{telemetry_a['Delta_Time'].abs().max():.3f} s"
-    r_corr = telemetry_a['Throttle'].corr(telemetry_b['Throttle'])
-    throttle_corr = f"{r_corr:.2f}" if not np.isnan(r_corr) else "1.00"
-
-    # FIXED: Re-rendered status blocks INSIDE the fragment boundary container to prevent Streamlit layout exceptions
-    if is_simulated_active:
-        st.info("🖥️ **Dashboard Status Mode:** Sandbox Engine Mock Active")
-    else:
-        st.success("✅ **Dashboard Status Mode:** Live F1 Server Pipeline Sync Operational")
-
+    throttle_corr = f"{telemetry_a['Throttle'].corr(telemetry_b['Throttle']):.2f}"
+    
     st.markdown("### 📋 Executive Summary Insights Panel")
     sum_col1, sum_col2, sum_col3, sum_col4, sum_col5 = st.columns(5)
     with sum_col1:
@@ -374,38 +330,33 @@ def render_live_telemetry_canvas():
     with sum_col5:
         st.markdown(f'<div class="metric-card"><strong style="color:#FF0000; font-size:11px;">🛡️ LINEAGE INTEGRITY</strong><br><span style="font-size:16px; font-weight:bold;">{lineage_integrity}</span><br><span style="color:#8892B0; font-size:11px;">Data Stream Governance</span></div>', unsafe_allow_html=True)
 
-    st.markdown(f"> **Strategic Intelligence Note:** This panel measures real-time performance profiles of **{driver_a}** and **{driver_b}** during the **{selected_session_label}** session. If network lag or server limits cause packet drops on active-season tracks, the pipeline will display an informational banner to run the sandbox mode seamlessly.")
+    if lineage_integrity == "100% Emulated Core" and not demo_mode:
+        st.warning(f"📋 **Data Access Notification ({engine_status}):** The active public API has truncated or dropped active tracking packets for {selected_year} {event_name}.")
+        st.info("💡 **Recruiter Tip:** Check 'Enable Simulated Demo Mode' in the sidebar or switch 'Select Season' to **2024** to instantly load full un-warped historical traces.")
+
     st.markdown("---")
 
-    # RESTORED: Recruiter guidance warning triggers automatically on empty active-season arrays
-    if is_simulated_active and not demo_mode:
-        st.warning(f"📋 **Data Gapping Notification Indicator ({engine_status}):** The live open REST endpoints returned incomplete tracking packages for {selected_year} {event_name}. This occurs standardly on open-access ports when active telemetry channels are compressed.")
-        st.info("💡 **Recruiter Portfolio Evaluation Tip:** To review flawless aligned multi-axis graphics instantly without packet drops, toggle **'Enable Simulated Demo Mode'** inside the left control panel.")
-
-    # 📈 PLOTLY THREE-TIER MULTI-AXIS CHART ENGINE
+    # Render High-Density Subplots
     label_suffix = f" ({selected_session_label})"
-    fig = make_subplots(
-        rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.08, 
-        subplot_titles=(f"Velocity Profile (Speed Trace){label_suffix}", f"Throttle Input Matrix{label_suffix}", f"Pacing Performance Gap Delta (Relative to {driver_a}){label_suffix}")
-    )
-
-    fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Speed'], name=f"{driver_a} Speed", line=dict(color='#00FFFF', width=3)), row=1, col=1) 
-    fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Speed'], name=f"{driver_b} Speed", line=dict(color='#FF00FF', width=3)), row=1, col=1) 
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.08, 
+                        subplot_titles=(f"Velocity Profile (Speed Trace){label_suffix}", f"Throttle Input Matrix{label_suffix}", f"Pacing Performance Gap Delta (Relative to {driver_a}){label_suffix}"))
+    
+    fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Speed'], name=f"{driver_a} Speed", line=dict(color='#00FFFF', width=3)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Speed'], name=f"{driver_b} Speed", line=dict(color='#FF00FF', width=3)), row=1, col=1)
     fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Throttle'], name=f"{driver_a} Throttle", line=dict(color='#00FFFF', width=1.5, dash='longdash')), row=2, col=1)
     fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Throttle'], name=f"{driver_b} Throttle", line=dict(color='#FF00FF', width=1.5, dash='longdash')), row=2, col=1)
-    fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Delta_Time'], name="Time Delta Gap", line=dict(color='#00FF66', width=2.5)), row=3, col=1) 
-
-    fig.update_layout(height=850, template="plotly_dark", showlegend=True, plot_bgcolor='#0E1117', paper_bgcolor='#0E1117',
-                      xaxis3_title="Distance Traveled (Meters)", yaxis_title="Velocity (km/h)", yaxis2_title="Throttle %", yaxis3_title="Delta (Seconds)")
+    fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Delta_Time'], name="Time Delta Gap", line=dict(color='#00FF66', width=2.5)), row=3, col=1)
+    
+    fig.update_layout(height=850, template="plotly_dark", plot_bgcolor='#0E1117', paper_bgcolor='#0E1117', xaxis3_title="Distance Traveled (Meters)", yaxis_title="Velocity (km/h)", yaxis2_title="Throttle %", yaxis3_title="Delta (Seconds)")
     fig.update_xaxes(gridcolor='#222933', zerolinecolor='#444d56')
     fig.update_yaxes(gridcolor='#222933', zerolinecolor='#444d56')
     st.plotly_chart(fig, use_container_width=True)
 
-# Run viewport fragment
-render_live_telemetry_canvas()
+# Run localized viewport canvas
+execute_live_viewport_render()
 
 # =========================================================
-# 📘 COMPREHENSIVE FIELD MANUAL GUIDE (100% PRESERVED)
+# 📘 COMPREHENSIVE TYPOGRAPHIC FIELD MANUAL GUIDE
 # =========================================================
 st.markdown("---")
 st.markdown("## 📊 Telemetry Engineering Field Manual")
@@ -418,7 +369,7 @@ with col_left:
     
     * **Velocity Profile Chart:** Look at the straightaways; parallel lines show clean aerodynamic efficiency and engine limits. Diverging slopes entering corners uncover variances in braking threshold aggression.
     * **Throttle Input Matrix:** Look for stepped steps to spot aerodynamic stabilization or fuel management. Sharp vertical rises profile excellent exit traction control on the apex lines.
-    * **Performance Gap Delta Line:** Tracks relative time differences down to the individual meter. An ascending green trend means **{driver_a}** is pulling away; a descending trend means **{driver_b}** is reclaiming the pacing deficit.
+    * **Performance Gap Delta Line:** Tracks relative time differences down to the individual meter. An ascending green trend means pulls away; a descending trend means reclaiming the pacing deficit.
     """)
 
 with col_right:
