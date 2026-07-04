@@ -3,54 +3,54 @@ import requests
 import pandas as pd
 import plotly.graph_objects as go
 
-# --- 1. PREMIUM DATA ENGINE ---
+# --- 1. ROBUST DATA FETCHING ---
+BASE_URL = "https://api.openf1.org/v1"
+
 @st.cache_data(ttl=3600)
-def get_live_data(year, round_num):
-    # Fetch session metadata to get valid session_key
-    url = f"https://api.openf1.org/v1/sessions?year={year}&round_number={round_num}"
-    response = requests.get(url)
-    
-    if response.status_code != 200 or not response.json():
-        return None, "No session data found for this round."
+def fetch_data(endpoint, params=None):
+    res = requests.get(f"{BASE_URL}/{endpoint}", params=params)
+    return res.json() if res.status_code == 200 else []
 
-    sessions = response.json()
-    # Filter for Qualifying
-    qualifying = [s for s in sessions if s.get('session_name') == 'Qualifying']
-    
-    if not qualifying:
-        return None, "Qualifying session not found."
+# --- 2. UI LAYOUT ---
+st.set_page_config(layout="wide")
+st.title("🏎️ F1 Live Telemetry")
 
-    session_key = qualifying[0]['session_key']
-    
-    # Fetch car data
-    tel_url = f"https://api.openf1.org/v1/car_data?session_key={session_key}"
-    tel_data = requests.get(tel_url).json()
-    
-    if not tel_data:
-        return None, "Telemetry data not available."
+year = st.sidebar.selectbox("Year", [2026, 2025])
+meetings = fetch_data("meetings", {"year": year})
+meeting_map = {m['meeting_name']: m['meeting_key'] for m in meetings}
+selected_gp = st.sidebar.selectbox("Grand Prix", list(meeting_map.keys()))
+
+# Get Sessions
+sessions = fetch_data("sessions", {"meeting_key": meeting_map[selected_gp]})
+session_map = {s['session_name']: s['session_key'] for s in sessions}
+selected_session = st.sidebar.selectbox("Session", list(session_map.keys()))
+
+# Get Drivers
+drivers = fetch_data("drivers", {"session_key": session_map[selected_session]})
+driver_map = {d['full_name']: d['driver_number'] for d in drivers}
+d1 = st.sidebar.selectbox("Driver A", list(driver_map.keys()))
+d2 = st.sidebar.selectbox("Ref Driver", list(driver_map.keys()))
+
+# --- 3. EXECUTION ---
+if st.button("Generate Dashboard"):
+    with st.spinner("Fetching live telemetry..."):
+        # Fetching Telemetry
+        tel_a = fetch_data("car_data", {"session_key": session_map[selected_session], "driver_number": driver_map[d1]})
+        tel_b = fetch_data("car_data", {"session_key": session_map[selected_session], "driver_number": driver_map[d2]})
         
-    return pd.DataFrame(tel_data), None
-
-# --- 2. CLEAN UI ---
-st.set_page_config(page_title="F1 Analytics Pro", layout="wide")
-st.title("🏎️ Premium F1 Live Analytics")
-
-year = st.sidebar.selectbox("Year", [2026])
-round_num = st.sidebar.number_input("Round Number", 1, 24, 1)
-
-df, error = get_live_data(year, round_num)
-
-if error:
-    st.warning(f"Status: {error}")
-else:
-    st.success("Data ingested successfully.")
-    
-    # Professional Plot
-    fig = go.Figure()
-    # Assuming standard columns for OpenF1 car_data
-    fig.add_trace(go.Scatter(x=df['date'], y=df['speed'], name="Speed"))
-    fig.update_layout(template="plotly_dark", title="Speed Telemetry")
-    st.plotly_chart(fig, use_container_width=True)
-
-    with st.expander("📖 Professional Guide"):
-        st.write("This dashboard leverages the OpenF1 API for cloud-native, real-time data ingestion, bypassing traditional IP-based restrictions.")
+        if tel_a and tel_b:
+            df_a, df_b = pd.DataFrame(tel_a), pd.DataFrame(tel_b)
+            
+            # Dashboard Metrics
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Max Speed A", f"{df_a['speed'].max()} km/h")
+            col2.metric("Max Speed B", f"{df_b['speed'].max()} km/h")
+            
+            # Plot
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(y=df_a['speed'], name=d1))
+            fig.add_trace(go.Scatter(y=df_b['speed'], name=d2))
+            fig.update_layout(template="plotly_dark", title="Speed Comparison")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.error("No telemetry records found for these drivers in this session.")
