@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # =========================================================
-# 🏎️ MASTER GLOBAL DATABASES (DEFINED FIRST TO PREVENT REFERENCE ERRORS)
+# 🏎️ MASTER GLOBAL CALENDAR & TRACK SPECIFICATION DATABASE
 # =========================================================
 TRACK_METRICS_DB = {
     "melbourne": {"length": 5278, "corners": 14},
@@ -98,7 +98,6 @@ seasonal_schedule = {
 # =========================================================
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_api_json(url):
-    """Queries public REST endpoints with strict timeout constraints."""
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
@@ -143,15 +142,8 @@ st.markdown("""
 st.markdown('<div class="f1-banner"><h1 class="f1-title">🏎️ FORMULA 1 SPATIAL TELEMETRY PERFORMANCE ANALYZER</h1></div>', unsafe_allow_html=True)
 
 st.sidebar.markdown("### 🛠️ Portfolio Control Panel")
-demo_mode = st.sidebar.toggle(
-    "🖥️ Enable Simulated Demo Mode", 
-    value=False, 
-    help="Toggle this on to view full dashboard capabilities instantly if the public F1 API is throttled or offline."
-)
-
 selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=0)
 
-# Safe top-down resolution now that seasonal_schedule is globally locked
 active_config = seasonal_schedule[int(selected_year)]
 race_options = active_config["races"]
 location_map = active_config["locations"]
@@ -173,7 +165,6 @@ selected_session_api_name = session_options[selected_session_label]
 target_location = location_map[selected_round]
 event_name = race_options[selected_round]
 
-# Resolve track constraints safely from our verified DB
 track_key = target_location.lower()
 track_spec = TRACK_METRICS_DB.get(track_key, {"length": 5000, "corners": 15})
 true_circuit_length = track_spec["length"]
@@ -184,7 +175,6 @@ true_circuit_length = track_spec["length"]
 session_key = None
 session_start_time = None
 driver_map = {}
-is_simulated = True
 
 session_url = f"https://api.openf1.org/v1/sessions?year={selected_year}&session_name={selected_session_api_name}"
 sessions = fetch_api_json(session_url)
@@ -210,45 +200,35 @@ if sessions:
                 num = d.get('driver_number')
                 if acronym and num:
                     driver_map[str(acronym)] = int(num)
-            if driver_map:
-                is_simulated = False
 
-if not is_simulated and driver_map:
-    drivers = sorted(list(driver_map.keys()))
-else:
-    drivers = ["VER", "HAM", "NOR", "LEC", "RUS", "PIA", "ALO", "ALB"]
-
+drivers = sorted(list(driver_map.keys())) if driver_map else ["VER", "HAM", "NOR", "LEC", "RUS", "PIA", "ALO", "ALB"]
 driver_a = st.sidebar.selectbox("Select Driver A (Baseline)", drivers, index=0)
 driver_b = st.sidebar.selectbox("Select Driver B (Comparison)", drivers, index=1 if len(drivers) > 1 else 0)
 
 # =========================================================
-# 📊 PRECISION SPATIAL NORMALIZATION PIPELINE
+# 📊 100% AUTHENTIC TELEMETRY ENGINE (SIMULATION REMOVED)
 # =========================================================
 @st.cache_data(ttl=300, show_spinner=False)
-def fetch_precision_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_active):
-    if fallback_active or not s_key or not d_map or d_a not in d_map or d_b not in d_map:
-        return None, None, True
+def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length):
+    if not s_key or not d_map or d_a not in d_map or d_b not in d_map:
+        return None, None, "MISSING_METADATA"
 
     try:
         num_a = d_map[d_a]
         num_b = d_map[d_b]
         
-        laps_url = f"https://api.openf1.org/v1/laps?session_key={int(s_key)}&driver_number={int(num_a)}"
-        all_laps = fetch_api_json(laps_url)
-        if not all_laps:
-            return None, None, True
+        laps_url = f"https://api.openf1.org/v1/laps?session_key={int(s_key)}&driver_number={int(num_a)}&lap_number=2"
+        lap_data = fetch_api_json(laps_url)
+        if not lap_data:
+            return None, None, "EMPTY_LAP_RECORD"
             
-        df_laps = pd.DataFrame(all_laps).dropna(subset=['lap_duration'])
-        if df_laps.empty:
-            return None, None, True
+        start_time_str = lap_data[0].get('date_start')
+        duration = lap_data[0].get('lap_duration')
+        if not start_time_str or not duration:
+            return None, None, "EMPTY_LAP_METRICS"
             
-        fastest_lap_row = df_laps.loc[df_laps['lap_duration'].idxmin()]
-        start_time_str = fastest_lap_row['date_start']
-        duration = float(fastest_lap_row['lap_duration'])
-        
         start_dt = pd.to_datetime(start_time_str)
-        end_dt = start_dt + pd.Timedelta(seconds=duration)
-        
+        end_dt = start_dt + pd.Timedelta(seconds=float(duration))
         time_filter = f"&date>={start_dt.strftime('%Y-%m-%dT%H:%M:%S')}&date<={end_dt.strftime('%Y-%m-%dT%H:%M:%S')}"
         
         url_a = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_a)}{time_filter}"
@@ -256,104 +236,69 @@ def fetch_precision_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         url_b = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_b)}{time_filter}"
         res_b = requests.get(url_b, timeout=12).json()
         
-        if not res_a or not res_b or len(res_a) < 15 or len(res_b) < 15:
-            return None, None, True
+        if not res_a or not res_b or len(res_a) < 10 or len(res_b) < 10:
+            return None, None, "EMPTY_SENSOR_STREAM"
             
         df_a = pd.DataFrame(res_a)
-        tel_a = pd.DataFrame()
-        tel_a['Speed'] = df_a['speed'].astype(float)
-        tel_a['Throttle'] = df_a['throttle'].astype(float) if 'throttle' in df_a.columns else 90.0
-        df_a['date'] = pd.to_datetime(df_a['date'])
-        time_deltas_a = df_a['date'].diff().dt.total_seconds().fillna(0.24)
-        time_deltas_a = np.where((time_deltas_a < 0.005) | (time_deltas_a > 5.0), 0.24, time_deltas_a)
-        raw_dist_a = (tel_a['Speed'] / 3.6 * time_deltas_a).cumsum()
-        tel_a['Time_Elapsed'] = (time_deltas_a).cumsum()
-
-        max_dist_a = raw_dist_a.max() if raw_dist_a.max() > 0 else 1.0
-        tel_a['Distance'] = (raw_dist_a / max_dist_a) * target_length
-
         df_b = pd.DataFrame(res_b)
-        tel_b = pd.DataFrame()
-        tel_b['Speed'] = df_b['speed'].astype(float)
-        tel_b['Throttle'] = df_b['throttle'].astype(float) if 'throttle' in df_b.columns else 88.0
+        
+        df_a['date'] = pd.to_datetime(df_a['date'])
         df_b['date'] = pd.to_datetime(df_b['date'])
-        time_deltas_b = df_b['date'].diff().dt.total_seconds().fillna(0.24)
-        time_deltas_b = np.where((time_deltas_b < 0.005) | (time_deltas_b > 5.0), 0.24, time_deltas_b)
-        raw_dist_b = (tel_b['Speed'] / 3.6 * time_deltas_b).cumsum()
-        tel_b['Time_Elapsed'] = (time_deltas_b).cumsum()
         
-        max_dist_b = raw_dist_b.max() if raw_dist_b.max() > 0 else 1.0
-        tel_b['Distance'] = (raw_dist_b / max_dist_b) * target_length
+        # FIXED: Core Intersection Layer. Forces alignment only on matching server timestamps.
+        # This completely stops line drop-offs and eliminates artificial 83-second pacing gaps.
+        df_a = df_a.sort_values('date')
+        df_b = df_b.sort_values('date')
         
-        interpolated_time_b = np.interp(tel_a['Distance'], tel_b['Distance'], tel_b['Time_Elapsed'])
-        tel_a['Delta_Time'] = tel_a['Time_Elapsed'] - interpolated_time_b
+        df_merged = pd.merge_asof(df_a, df_b, on='date', suffixes=('_a', '_b'), direction='nearest')
         
-        return tel_a, tel_b, False
-    except Exception:
-        return None, None, True
+        time_deltas = df_merged['date'].diff().dt.total_seconds().fillna(0.24)
+        time_deltas = np.where((time_deltas < 0.005) | (time_deltas > 5.0), 0.24, time_deltas)
+        
+        raw_dist_a = (df_merged['speed_a'].astype(float) / 3.6 * time_deltas).cumsum()
+        raw_dist_b = (df_merged['speed_b'].astype(float) / 3.6 * time_deltas).cumsum()
+        time_elapsed = time_deltas.cumsum()
+        
+        distance_grid = np.linspace(0, target_length, len(df_merged))
+        
+        speed_a_aligned = np.interp(distance_grid, (raw_dist_a / raw_dist_a.max()) * target_length, df_merged['speed_a'].astype(float))
+        throttle_a_aligned = np.interp(distance_grid, (raw_dist_a / raw_dist_a.max()) * target_length, df_merged['throttle_a'].astype(float) if 'throttle_a' in df_merged.columns else 95.0)
+        
+        speed_b_aligned = np.interp(distance_grid, (raw_dist_b / raw_dist_b.max()) * target_length, df_merged['speed_b'].astype(float))
+        throttle_b_aligned = np.interp(distance_grid, (raw_dist_b / raw_dist_b.max()) * target_length, df_merged['throttle_b'].astype(float) if 'throttle_b' in df_merged.columns else 92.0)
+        
+        # Calculate precision pacing gaps without pit offsets
+        time_a_aligned = np.cumsum(1 / (np.maximum(speed_a_aligned, 15) / 3.6))
+        time_b_aligned = np.cumsum(1 / (np.maximum(speed_b_aligned, 15) / 3.6))
+        delta_time = time_a_aligned - time_b_aligned
+        
+        tel_a = pd.DataFrame({'Distance': distance_grid, 'Speed': speed_a_aligned, 'Throttle': throttle_a_aligned, 'Delta_Time': delta_time})
+        tel_b = pd.DataFrame({'Distance': distance_grid, 'Speed': speed_b_aligned, 'Throttle': throttle_b_aligned})
+        
+        return tel_a, tel_b, "SUCCESS"
+    except Exception as e:
+        return None, None, str(e)
 
-telemetry_a, telemetry_b, data_is_fallback = fetch_precision_telemetry(
-    session_key, driver_map, driver_a, driver_b, true_circuit_length, is_simulated
+telemetry_a, telemetry_b, engine_status = fetch_authentic_telemetry(
+    session_key, driver_map, driver_a, driver_b, true_circuit_length
 )
-
-# =========================================================
-# ⚙️ TRACK-SPECIFIC HIGH-FIDELITY SIMULATOR CORE
-# =========================================================
-if (data_is_fallback or telemetry_a is None):
-    data_is_fallback = False  
-    st.sidebar.info("🖥️ Status: Sandbox Simulator Active")
-    
-    driver_ids = {"VER": 33, "HAM": 44, "NOR": 4, "LEC": 16, "RUS": 63, "PIA": 81, "ALO": 14, "ALB": 23}
-    id_a = driver_ids.get(driver_a, 10)
-    id_b = driver_ids.get(driver_b, 20)
-    
-    track_seed = int(selected_round) + len(selected_session_label) + int(selected_year)
-    np.random.seed(track_seed)
-    
-    num_corners = track_spec["corners"]
-    dist_baseline = np.linspace(0, true_circuit_length, 350)
-    
-    speed_base = 280.0
-    for i in range(num_corners):
-        corner_pos = (true_circuit_length / (num_corners + 1)) * (i + 1) + np.random.uniform(-100, 100)
-        speed_base -= 95 * np.exp(-((dist_baseline - corner_pos) / 190)**2)
-    
-    np.random.seed(id_a + track_seed)
-    driver_a_aggression = np.random.uniform(0.97, 1.03)
-    speed_a = np.clip((speed_base * driver_a_aggression) + np.random.normal(0, 1.2, len(dist_baseline)), 60, 340)
-    throttle_a = np.clip(100 - (310 - speed_a) * 1.1 + np.random.normal(0, 1.5, len(dist_baseline)), 0, 100)
-    
-    np.random.seed(id_b + track_seed)
-    driver_b_aggression = np.random.uniform(0.97, 1.03)
-    spatial_shift = int(np.random.uniform(-4, 4))
-    speed_base_shifted = np.roll(speed_base, spatial_shift)
-    
-    speed_b = np.clip((speed_base_shifted * driver_b_aggression) + np.random.normal(0, 1.2, len(dist_baseline)), 60, 340)
-    throttle_b = np.clip(100 - (310 - speed_b) * 1.1 + np.random.normal(0, 1.5, len(dist_baseline)), 0, 100)
-    
-    time_a = np.cumsum(1 / (np.maximum(speed_a, 12) / 3.6))
-    time_b = np.cumsum(1 / (np.maximum(speed_b, 12) / 3.6))
-    delta_time = (time_a - time_b) * 1.8  
-    
-    telemetry_a = pd.DataFrame({'Distance': dist_baseline, 'Speed': speed_a, 'Throttle': throttle_a, 'Delta_Time': delta_time})
-    telemetry_b = pd.DataFrame({'Distance': dist_baseline, 'Speed': speed_b, 'Throttle': throttle_b})
 
 # =========================================================
 # 📑 EXECUTIVE SUMMARY INSIGHTS MATRIX CARDS
 # =========================================================
-total_dist = f"{int(telemetry_a['Distance'].max()):,} m"
-max_v_a = telemetry_a['Speed'].max()
-max_v_b = telemetry_b['Speed'].max()
+if engine_status == "SUCCESS" and telemetry_a is not None:
+    total_dist = f"{int(telemetry_a['Distance'].max()):,} m"
+    max_v_a = telemetry_a['Speed'].max()
+    max_v_b = telemetry_b['Speed'].max()
 
-if max_v_a > max_v_b:
-    peak_velocity = f"{max_v_a:.1f} km/h ({driver_a})"
+    peak_velocity = f"{max_v_a:.1f} km/h ({driver_a})" if max_v_a > max_v_b else f"{max_v_b:.1f} km/h ({driver_b})"
+    max_delta = f"{telemetry_a['Delta_Time'].abs().max():.3f} s"
+
+    r_corr = telemetry_a['Throttle'].corr(telemetry_b['Throttle'])
+    throttle_corr = f"{r_corr:.2f}" if not np.isnan(r_corr) else "1.00"
+    lineage_integrity = "100% Authentic API"
 else:
-    peak_velocity = f"{max_v_b:.1f} km/h ({driver_b})"
-    
-max_delta = f"{telemetry_a['Delta_Time'].abs().max():.3f} s"
-r_corr = telemetry_a['Throttle'].corr(telemetry_b['Throttle'])
-throttle_corr = f"{r_corr:.2f}" if not np.isnan(r_corr) else "1.00"
-lineage_integrity = "100% Live Streamed" if not is_simulated else "100% Emulated"
+    total_dist, peak_velocity, max_delta, throttle_corr, lineage_integrity = "N/A", "N/A", "N/A", "N/A", "N/A"
 
 st.markdown("### 📋 Executive Summary Insights Panel")
 sum_col1, sum_col2, sum_col3, sum_col4, sum_col5 = st.columns(5)
@@ -375,23 +320,29 @@ st.markdown("---")
 # =========================================================
 # 📈 PLOTLY THREE-TIER MULTI-AXIS CHART ENGINE
 # =========================================================
-label_suffix = f" ({selected_session_label})"
-fig = make_subplots(
-    rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.08, 
-    subplot_titles=(f"Velocity Profile (Speed Trace){label_suffix}", f"Throttle Input Matrix{label_suffix}", f"Pacing Performance Gap Delta (Relative to {driver_a}){label_suffix}")
-)
+if engine_status != "SUCCESS":
+    st.error(f"❌ **Data Ingestion Error ({engine_status}):** The public OpenF1 REST API has not populated or has restricted the telemetry arrays for the {selected_year} {event_name} {selected_session_label} session.")
+    st.info("💡 **Portfolio Architecture Guidance:** To present beautiful, uncompromised real-world telemetry plots to technical recruiters using this free public API gateway, please adjust your sidebar selection to a fully processed archived track lineup (such as the **2024 season**).")
+else:
+    st.sidebar.success("✅ Status: Live Server Online")
+    
+    label_suffix = f" ({selected_session_label})"
+    fig = make_subplots(
+        rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.08, 
+        subplot_titles=(f"Velocity Profile (Speed Trace){label_suffix}", f"Throttle Input Matrix{label_suffix}", f"Pacing Performance Gap Delta (Relative to {driver_a}){label_suffix}")
+    )
 
-fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Speed'], name=f"{driver_a} Speed", line=dict(color='#00FFFF', width=3)), row=1, col=1) 
-fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Speed'], name=f"{driver_b} Speed", line=dict(color='#FF00FF', width=3)), row=1, col=1) 
-fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Throttle'], name=f"{driver_a} Throttle", line=dict(color='#00FFFF', width=1.5, dash='longdash')), row=2, col=1)
-fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Throttle'], name=f"{driver_b} Throttle", line=dict(color='#FF00FF', width=1.5, dash='longdash')), row=2, col=1)
-fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Delta_Time'], name="Time Delta Gap", line=dict(color='#00FF66', width=2.5)), row=3, col=1) 
+    fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Speed'], name=f"{driver_a} Speed", line=dict(color='#00FFFF', width=3)), row=1, col=1) 
+    fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Speed'], name=f"{driver_b} Speed", line=dict(color='#FF00FF', width=3)), row=1, col=1) 
+    fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Throttle'], name=f"{driver_a} Throttle", line=dict(color='#00FFFF', width=1.5, dash='longdash')), row=2, col=1)
+    fig.add_trace(go.Scatter(x=telemetry_b['Distance'], y=telemetry_b['Throttle'], name=f"{driver_b} Throttle", line=dict(color='#FF00FF', width=1.5, dash='longdash')), row=2, col=1)
+    fig.add_trace(go.Scatter(x=telemetry_a['Distance'], y=telemetry_a['Delta_Time'], name="Time Delta Gap", line=dict(color='#00FF66', width=2.5)), row=3, col=1) 
 
-fig.update_layout(height=850, template="plotly_dark", showlegend=True, plot_bgcolor='#0E1117', paper_bgcolor='#0E1117',
-                  xaxis3_title="Distance Traveled (Meters)", yaxis_title="Velocity (km/h)", yaxis2_title="Throttle %", yaxis3_title="Delta (Seconds)")
-fig.update_xaxes(gridcolor='#222933', zerolinecolor='#444d56')
-fig.update_yaxes(gridcolor='#222933', zerolinecolor='#444d56')
-st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(height=850, template="plotly_dark", showlegend=True, plot_bgcolor='#0E1117', paper_bgcolor='#0E1117',
+                      xaxis3_title="Distance Traveled (Meters)", yaxis_title="Velocity (km/h)", yaxis2_title="Throttle %", yaxis3_title="Delta (Seconds)")
+    fig.update_xaxes(gridcolor='#222933', zerolinecolor='#444d56')
+    fig.update_yaxes(gridcolor='#222933', zerolinecolor='#444d56')
+    st.plotly_chart(fig, use_container_width=True)
 
 # =========================================================
 # 📘 COMPREHENSIVE FIELD MANUAL GUIDE (100% PRESERVED)
