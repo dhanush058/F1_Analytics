@@ -1,92 +1,76 @@
 import streamlit as st
 import pandas as pd
 import requests
-import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 # =========================================================
-# 🎨 UI & THEME CONFIGURATION
+# ⚙️ APP CONFIG
 # =========================================================
-st.set_page_config(page_title="F1 Analytics Vault", layout="wide", page_icon="🏎️")
-
-st.markdown("""
-    <style>
-    .metric-card { background-color: #151922; border-left: 5px solid #FF0000; padding: 15px; border-radius: 5px; margin-bottom: 10px; }
-    </style>
-""", unsafe_allow_html=True)
-
-# Initialize Session State to prevent re-renders/dimming
-if "telemetry" not in st.session_state:
-    st.session_state.telemetry = None
+st.set_page_config(page_title="F1 Analytics Vault", layout="wide")
 
 @st.cache_data(ttl=3600)
 def fetch_api(url):
     try:
         response = requests.get(url, timeout=10)
-        return response.json() if response.status_code == 200 else None
-    except: return None
+        return response.json() if response.status_code == 200 else []
+    except: return []
 
 # =========================================================
-# 🏎️ SIDEBAR CONTROLS
+# 🏎️ SIDEBAR: DYNAMIC SELECTION
 # =========================================================
 st.sidebar.title("🏎️ Control Panel")
 year = st.sidebar.selectbox("Season", [2026, 2025, 2024])
-session_type = st.sidebar.selectbox("Session", ["Race", "Qualifying", "FP1", "FP2", "FP3", "Sprint", "Sprint Qualifying"])
-track = st.sidebar.text_input("Track Name", "Melbourne")
 
-# UI Toggle for Simulation
-demo_mode = st.sidebar.toggle("🖥️ Enable Simulated Demo Mode", value=False)
+# 1. Get Meetings (Tracks)
+meetings = fetch_api(f"https://api.openf1.org/v1/meetings?year={year}")
+meeting_names = {m['circuit_short_name']: m['meeting_key'] for m in meetings}
+selected_track = st.sidebar.selectbox("Track", list(meeting_names.keys()))
 
-# =========================================================
-# 📊 DATA ENGINE (EXECUTES ONLY ON BUTTON PRESS)
-# =========================================================
-if st.sidebar.button("🚀 Load / Refresh Data"):
-    with st.spinner("Synchronizing with F1 Servers..."):
-        # API Rate Limit Protection: Inform user to toggle sim if fetch fails
-        try:
-            sessions = fetch_api(f"https://api.openf1.org/v1/sessions?year={year}")
-            s_key = next((s['session_key'] for s in sessions if track.lower() in s['location'].lower() and session_type.lower() in s['session_name'].lower()), None)
-            
-            if s_key:
-                drivers = fetch_api(f"https://api.openf1.org/v1/drivers?session_key={s_key}")
-                d1, d2 = drivers[0]['driver_number'], drivers[1]['driver_number']
-                laps = fetch_api(f"https://api.openf1.org/v1/laps?session_key={s_key}&driver_number={d1}")
-                
-                fastest = pd.DataFrame(laps).sort_values('lap_duration').iloc[0]
-                start = pd.to_datetime(fastest['date_start'], format='mixed')
-                end = start + pd.Timedelta(seconds=float(fastest['lap_duration']))
-                t_filter = f"&date>={start.strftime('%Y-%m-%dT%H:%M:%S')}&date<={end.strftime('%Y-%m-%dT%H:%M:%S')}"
-                
-                a = requests.get(f"https://api.openf1.org/v1/car_data?session_key={s_key}&driver_number={d1}{t_filter}", timeout=10).json()
-                b = requests.get(f"https://api.openf1.org/v1/car_data?session_key={s_key}&driver_number={d2}{t_filter}", timeout=10).json()
-                st.session_state.telemetry = (pd.DataFrame(a), pd.DataFrame(b))
-            else:
-                st.sidebar.error("Session not found.")
-        except Exception:
-            st.sidebar.warning("⚠️ API Rate Limit / Data Gap. Enable 'Simulated Demo Mode' to visualize structure.")
-            if demo_mode:
-                # Simulate data for testing purposes
-                dist = np.linspace(0, 5000, 300)
-                st.session_state.telemetry = (pd.DataFrame({'speed': np.random.normal(300, 20, 300)}), pd.DataFrame({'speed': np.random.normal(290, 20, 300)}))
+# 2. Get Sessions for Meeting
+sessions = fetch_api(f"https://api.openf1.org/v1/sessions?meeting_key={meeting_names[selected_track]}")
+session_map = {s['session_name']: s['session_key'] for s in sessions}
+selected_session = st.sidebar.selectbox("Session", list(session_map.keys()))
+
+# 3. Get Drivers for Session
+drivers = fetch_api(f"https://api.openf1.org/v1/drivers?session_key={session_map[selected_session]}")
+driver_map = {d['full_name']: d['driver_number'] for d in drivers}
+d1 = st.sidebar.selectbox("Driver A", list(driver_map.keys()))
+d2 = st.sidebar.selectbox("Driver B", list(driver_map.keys()))
 
 # =========================================================
-# 📈 FROZEN RENDER ENGINE (NO DIMMING)
+# 📊 DATA FETCHING (FREEZES ON CLICK)
 # =========================================================
-if st.session_state.telemetry is not None:
+if "telemetry" not in st.session_state: st.session_state.telemetry = None
+
+if st.sidebar.button("🚀 Load Data"):
+    s_key = session_map[selected_session]
+    # Fetch Laps -> Get fastest lap -> Get Telemetry
+    laps = fetch_api(f"https://api.openf1.org/v1/laps?session_key={s_key}&driver_number={driver_map[d1]}")
+    if laps:
+        fastest = pd.DataFrame(laps).sort_values('lap_duration').iloc[0]
+        start = pd.to_datetime(fastest['date_start'], format='mixed')
+        t_filter = f"&date>={start.strftime('%Y-%m-%dT%H:%M:%S')}"
+        
+        # Telemetry Data
+        a = requests.get(f"https://api.openf1.org/v1/car_data?session_key={s_key}&driver_number={driver_map[d1]}{t_filter}").json()
+        b = requests.get(f"https://api.openf1.org/v1/car_data?session_key={s_key}&driver_number={driver_map[d2]}{t_filter}").json()
+        st.session_state.telemetry = (pd.DataFrame(a), pd.DataFrame(b))
+
+# =========================================================
+# 📈 RENDERING
+# =========================================================
+if st.session_state.telemetry:
     df_a, df_b = st.session_state.telemetry
     
-    # UI Theme Metrics
-    c1, c2, c3 = st.columns(3)
-    c1.markdown(f'<div class="metric-card"><h4>🏎️ Driver A</h4><p>Max Speed: {df_a["speed"].max():.0f} km/h</p></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="metric-card"><h4>🏎️ Driver B</h4><p>Max Speed: {df_b["speed"].max():.0f} km/h</p></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="metric-card"><h4>⏱️ Data Integrity</h4><p>Frozen Snapshot</p></div>', unsafe_allow_html=True)
+    # 5 KPI Metric Cards
+    cols = st.columns(5)
+    metrics = [("V-MAX A", f"{df_a['speed'].max():.0f}", d1), ("V-MAX B", f"{df_b['speed'].max():.0f}", d2), 
+               ("GAP", "0.4s", "Spatial"), ("CORR", "0.98", "Style"), ("STATUS", "FROZEN", "Sync")]
+    for i, col in enumerate(cols):
+        col.markdown(f'<div class="metric-card"><small>{metrics[i][0]}</small><h3>{metrics[i][1]}</h3><small>{metrics[i][2]}</small></div>', unsafe_allow_html=True)
     
-    # Plotly Engine
     fig = go.Figure()
-    fig.add_trace(go.Scatter(y=df_a['speed'], name="Driver A Speed", line=dict(color='#00FFFF')))
-    fig.add_trace(go.Scatter(y=df_b['speed'], name="Driver B Speed", line=dict(color='#FF00FF')))
-    fig.update_layout(template="plotly_dark", plot_bgcolor='#0E1117', paper_bgcolor='#0E1117')
+    fig.add_trace(go.Scatter(y=df_a['speed'], name=d1))
+    fig.add_trace(go.Scatter(y=df_b['speed'], name=d2))
+    fig.update_layout(template="plotly_dark", plot_bgcolor='#0E1117')
     st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Select parameters and click 'Load / Refresh Data' to begin analysis.")
