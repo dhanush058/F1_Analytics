@@ -17,17 +17,23 @@ st.markdown("""
 class F1DataPipeline:
     def fetch(self, endpoint, params=None):
         try:
+            # Added a timeout and explicit check for successful response
             res = requests.get(f"https://api.openf1.org/v1/{endpoint}", params=params, timeout=10)
             return res.json() if res.status_code == 200 else []
         except: return []
 
     def get_fastest_lap_telemetry(self, s_key, d_num):
+        # 1. Fetch laps to find the fastest
         laps = self.fetch("laps", {"session_key": s_key, "driver_number": d_num})
-        # Filter for valid laps with required timing data
+        
+        # 2. Defensive filtering: Only keep laps that have valid timing data
         valid_laps = [l for l in laps if l.get('lap_duration') and l.get('date_start') and l.get('date_end')]
         if not valid_laps: return None
         
+        # 3. Identify fastest lap by minimum duration
         fastest = min(valid_laps, key=lambda x: x['lap_duration'])
+        
+        # 4. Fetch telemetry for the exact time window of the fastest lap
         return self.fetch("car_data", {
             "session_key": s_key, 
             "driver_number": d_num,
@@ -62,20 +68,21 @@ c5.markdown(f'<div class="metric-card"><small>AVG THROTTLE</small><h3>92.4%</h3>
 
 # --- 5. NEON PLOT ENGINE ---
 st.write("---")
-fig = make_subplots(rows=3, cols=1, shared_xaxes=True, subplot_titles=("Speed (km/h)", "Throttle (%)", "Delta (s)"))
-
+# Integrity check before plotting
 if d1 != "No Data" and d2 != "No Data":
     data_a = pipeline.get_fastest_lap_telemetry(s_map.get(selected_session), d_map.get(d1))
     data_b = pipeline.get_fastest_lap_telemetry(s_map.get(selected_session), d_map.get(d2))
     
     if data_a and data_b:
         df_a, df_b = pd.DataFrame(data_a), pd.DataFrame(data_b)
+        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, subplot_titles=("Speed (km/h)", "Throttle (%)", "Delta (s)"))
         fig.add_trace(go.Scatter(y=df_a['speed'], name=d1, line=dict(color='#00FFFF')), row=1, col=1)
         fig.add_trace(go.Scatter(y=df_b['speed'], name=d2, line=dict(color='#FF00FF')), row=1, col=1)
         fig.add_trace(go.Scatter(y=df_a['throttle'], name="Throttle", line=dict(color='#00FF00')), row=2, col=1)
-        fig.add_trace(go.Scatter(y=df_a['speed'] - df_b['speed'].values[:len(df_a)], name="Delta", line=dict(color='#FFFF00')), row=3, col=1)
+        # Delta calculation aligns data length for the plot
+        delta = df_a['speed'].values - df_b['speed'].values[:len(df_a)]
+        fig.add_trace(go.Scatter(y=delta, name="Delta", line=dict(color='#FFFF00')), row=3, col=1)
+        fig.update_layout(template="plotly_dark", plot_bgcolor='#0E1117', height=700)
+        st.plotly_chart(fig, use_container_width=True)
     else:
-        fig.add_annotation(text="Fastest lap telemetry unavailable for this driver combination.", showarrow=False)
-
-fig.update_layout(template="plotly_dark", plot_bgcolor='#0E1117', height=700)
-st.plotly_chart(fig, use_container_width=True)
+        st.warning("⚠️ Fastest lap telemetry unavailable for this driver combination.")
