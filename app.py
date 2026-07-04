@@ -4,7 +4,10 @@ import requests
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-st.set_page_config(layout="wide")
+# --- 1. INITIALIZATION (Prevents NameError) ---
+st.set_page_config(layout="wide", page_title="F1 Analytics Pro")
+d1 = d2 = "No Data" 
+s_map = d_map = {}
 
 class F1DataPipeline:
     def fetch(self, endpoint, params=None):
@@ -15,30 +18,45 @@ class F1DataPipeline:
 
 pipeline = F1DataPipeline()
 
-# --- SIDEBAR ---
+# --- 2. SIDEBAR ---
+st.sidebar.header("📊 Selection Panel")
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
-# ... (Use your existing meeting/session/driver maps here) ...
+meetings = pipeline.fetch("meetings", {"year": year})
+m_map = {m['meeting_name']: m['meeting_key'] for m in meetings} if meetings else {}
+selected_gp = st.sidebar.selectbox("Grand Prix", list(m_map.keys()) if m_map else ["No Data"])
 
-# --- FIXED PLOT ENGINE ---
+sessions = pipeline.fetch("sessions", {"meeting_key": m_map.get(selected_gp)}) if m_map.get(selected_gp) else []
+s_map = {s['session_name']: s['session_key'] for s in sessions} if sessions else {}
+selected_session = st.sidebar.selectbox("Session", list(s_map.keys()) if s_map else ["No Data"])
+
+drivers = pipeline.fetch("drivers", {"session_key": s_map.get(selected_session)}) if s_map.get(selected_session) else []
+d_map = {d['full_name']: d['driver_number'] for d in drivers} if drivers else {}
+d1 = st.sidebar.selectbox("Driver A", list(d_map.keys()) if d_map else ["No Data"])
+d2 = st.sidebar.selectbox("Ref Driver", list(d_map.keys()) if d_map else ["No Data"])
+
+# --- 3. PLOT ENGINE ---
+st.title(f"🚀 Telemetry Analysis: {selected_gp}")
+
 if d1 != "No Data" and d2 != "No Data":
-    data_a = pipeline.fetch("car_data", {"session_key": s_map[selected_session], "driver_number": d_map[d1]})
-    data_b = pipeline.fetch("car_data", {"session_key": s_map[selected_session], "driver_number": d_map[d2]})
+    # Using the 'car_data' endpoint correctly
+    data_a = pipeline.fetch("car_data", {"session_key": s_map.get(selected_session), "driver_number": d_map.get(d1)})
+    data_b = pipeline.fetch("car_data", {"session_key": s_map.get(selected_session), "driver_number": d_map.get(d2)})
     
     if data_a and data_b:
-        # CONVERSION: The API returns data points. We must extract the value.
-        # Ensure we are looking at the 'value' key if it exists, or the dictionary itself.
         df_a = pd.DataFrame(data_a)
         df_b = pd.DataFrame(data_b)
         
-        # If 'value' is nested (common in OpenF1), extract it:
-        # This assumes the API returns [{'value': 300, 'date': '...'}, ...]
-        # If the API returns direct values, remove the .apply block.
+        # DEBUG: Print columns to console so you can see exactly what key to use
+        # st.write(df_a.columns) 
         
-        fig = make_subplots(rows=3, cols=1, shared_xaxes=True)
+        # OpenF1 'car_data' often uses 'value' or 'speed'. We check for common ones.
+        target_col = 'value' if 'value' in df_a.columns else 'speed'
         
-        # Plotting - access the correct column name
-        fig.add_trace(go.Scatter(y=df_a['value'], name=d1, line=dict(color='#00FFFF')), row=1, col=1)
-        fig.add_trace(go.Scatter(y=df_b['value'], name=d2, line=dict(color='#FF00FF')), row=1, col=1)
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True)
+        fig.add_trace(go.Scatter(y=df_a[target_col].iloc[:500], name=d1), row=1, col=1)
+        fig.add_trace(go.Scatter(y=df_b[target_col].iloc[:500], name=d2), row=1, col=1)
         
-        fig.update_layout(template="plotly_dark", height=700)
+        fig.update_layout(template="plotly_dark", height=600)
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.error("No telemetry data found for this selection. Try a different session.")
