@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # --- 1. CONFIG & NEON THEME ---
-st.set_page_config(layout="wide", page_title="F1 Analytics Pro")
+st.set_page_config(layout="wide", page_title="F1 Fastest Lap Analytics")
 st.markdown("""
 <style>
     .metric-card { background-color: #0E1117; border: 2px solid #00FFFF; padding: 15px; border-radius: 10px; text-align: center; }
@@ -22,28 +22,31 @@ class F1DataPipeline:
             return res.json() if res.status_code == 200 else []
         except: return []
 
-    def get_telemetry(self, s_key, d_num):
-        # A: Fetch fastest lap
+    def get_strict_fastest_lap(self, s_key, d_num):
+        # Fetch laps
         laps = self.fetch("laps", {"session_key": s_key, "driver_number": d_num})
         valid_laps = [l for l in laps if l.get('lap_duration') and l.get('date_start') and l.get('date_end')]
+        if not valid_laps: return None
         
-        if valid_laps:
-            fastest = min(valid_laps, key=lambda x: x['lap_duration'])
-            data = self.fetch("car_data", {"session_key": s_key, "driver_number": d_num})
-            if data:
-                df = pd.DataFrame(data)
-                df['date'] = pd.to_datetime(df['date'])
-                mask = (df['date'] >= pd.to_datetime(fastest['date_start'])) & \
-                       (df['date'] <= pd.to_datetime(fastest['date_end']))
-                if not df[mask].empty: return df[mask]
+        # Get fastest lap
+        fastest = min(valid_laps, key=lambda x: x['lap_duration'])
         
-        # B: Fallback (Ensure app never shows "Unavailable")
+        # Fetch telemetry for the whole session
         data = self.fetch("car_data", {"session_key": s_key, "driver_number": d_num})
-        return pd.DataFrame(data) if data else pd.DataFrame()
+        if not data: return None
+        
+        # STRICT FILTERING: Only return the fastest lap window
+        df = pd.DataFrame(data)
+        df['date'] = pd.to_datetime(df['date'])
+        start = pd.to_datetime(fastest['date_start'])
+        end = pd.to_datetime(fastest['date_end'])
+        
+        subset = df[(df['date'] >= start) & (df['date'] <= end)]
+        return subset if not subset.empty else None
 
 pipeline = F1DataPipeline()
 
-# --- 3. SIDEBAR ---
+# --- 3. SIDEBAR & UI ---
 st.sidebar.header("📊 Selection Panel")
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
 meetings = {m['meeting_name']: m['meeting_key'] for m in pipeline.fetch("meetings", {"year": year})}
@@ -55,26 +58,25 @@ d1 = st.sidebar.selectbox("Driver A", list(drivers.keys()))
 d2 = st.sidebar.selectbox("Ref Driver", list(drivers.keys()))
 
 # --- 4. ENGINE ---
-st.title(f"🚀 Analysis: {selected_gp}")
-df_a = pipeline.get_telemetry(sessions[selected_session], drivers[d1])
-df_b = pipeline.get_telemetry(sessions[selected_session], drivers[d2])
+st.title(f"🚀 Fastest Lap Analysis: {selected_gp}")
+df_a = pipeline.get_strict_fastest_lap(sessions[selected_session], drivers[d1])
+df_b = pipeline.get_strict_fastest_lap(sessions[selected_session], drivers[d2])
 
-if not df_a.empty and not df_b.empty:
-    # 5-Metric Layout
+if df_a is not None and df_b is not None:
+    # Metric Cards
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.markdown(f'<div class="metric-card"><small>GP</small><h3>{selected_gp[:10]}</h3></div>', unsafe_allow_html=True)
     c2.markdown(f'<div class="metric-card"><small>SESSION</small><h3>{selected_session[:10]}</h3></div>', unsafe_allow_html=True)
     c3.markdown(f'<div class="metric-card"><small>MAX VEL</small><h3>{df_a["speed"].max():.0f}</h3></div>', unsafe_allow_html=True)
-    c4.markdown(f'<div class="metric-card"><small>AVG THROTTLE</small><h3>{df_a["throttle"].mean():.1f}</h3></div>', unsafe_allow_html=True)
-    c5.markdown(f'<div class="metric-card"><small>MAX GAP</small><h3>{abs(df_a["speed"].max() - df_b["speed"].max()):.0f}</h3></div>', unsafe_allow_html=True)
+    c4.markdown(f'<div class="metric-card"><small>AVG THR</small><h3>{df_a["throttle"].mean():.1f}</h3></div>', unsafe_allow_html=True)
+    c5.markdown(f'<div class="metric-card"><small>GAP</small><h3>{abs(df_a["speed"].max() - df_b["speed"].max()):.0f}</h3></div>', unsafe_allow_html=True)
 
-    # Plotting Engine
+    # Plot
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True)
     fig.add_trace(go.Scatter(y=df_a['speed'], name=d1, line=dict(color='#00FFFF')), row=1, col=1)
     fig.add_trace(go.Scatter(y=df_b['speed'], name=d2, line=dict(color='#FF00FF')), row=1, col=1)
     fig.add_trace(go.Scatter(y=df_a['throttle'], name="Throttle", line=dict(color='#00FF00')), row=2, col=1)
     
-    # Delta logic
     min_len = min(len(df_a), len(df_b))
     delta = df_a['speed'].iloc[:min_len].values - df_b['speed'].iloc[:min_len].values
     fig.add_trace(go.Scatter(y=delta, name="Delta", fill='tozeroy', line=dict(color='#FFFF00')), row=3, col=1)
@@ -82,4 +84,4 @@ if not df_a.empty and not df_b.empty:
     fig.update_layout(template="plotly_dark", height=700, plot_bgcolor='#050505')
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.info("Loading session data... please allow a moment for the telemetry stream to sync.")
+    st.error("No valid fastest lap telemetry found. This happens if the session was not a qualifying session or the telemetry is missing from the API.")
