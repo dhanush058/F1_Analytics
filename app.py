@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # =========================================================
-# 🏎️ MASTER GLOBAL TRACK BASELINE & MULTI-SEASON DICTIONARIES
+# 🏎️ MASTER GLOBAL TRACK SPECIFICATION DATABASE
 # =========================================================
 TRACK_METRICS_DB = {
     "melbourne": {"length": 5278, "corners": 14},
@@ -142,12 +142,10 @@ st.markdown("""
 st.markdown('<div class="f1-banner"><h1 class="f1-title">🏎️ FORMULA 1 SPATIAL TELEMETRY PERFORMANCE ANALYZER</h1></div>', unsafe_allow_html=True)
 
 st.sidebar.markdown("### 🛠️ Portfolio Control Panel")
-
-# RESTORED: Fully operational simulator sandbox override toggle
 demo_mode = st.sidebar.toggle(
     "🖥️ Enable Simulated Demo Mode", 
     value=False, 
-    help="Toggle this on to view full dashboard capabilities instantly if the public F1 API is throttled, missing rows, or offline."
+    help="Toggle this on to view full dashboard capabilities instantly if the public F1 API is throttled or offline."
 )
 
 selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=0)
@@ -222,7 +220,7 @@ driver_a = st.sidebar.selectbox("Select Driver A (Baseline)", drivers, index=0)
 driver_b = st.sidebar.selectbox("Select Driver B (Comparison)", drivers, index=1 if len(drivers) > 1 else 0)
 
 # =========================================================
-# 📊 PRODUCTION-GRADE TELEMETRY ALIGNMENT ENGINE
+# 📊 SYNCHRONOUS VALIDATION TELEMETRY ENGINE
 # =========================================================
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_active):
@@ -236,7 +234,6 @@ def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         laps_url = f"https://api.openf1.org/v1/laps?session_key={int(s_key)}&driver_number={int(num_a)}"
         lap_data = fetch_api_json(laps_url)
         
-        # FIXED: Crash protection layer handles DNS/DNF edge cases cleanly
         if not lap_data or len(lap_data) == 0:
             return None, None, "EMPTY_LAP_RECORD"
             
@@ -244,7 +241,6 @@ def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         if df_laps.empty:
             return None, None, "EMPTY_LAP_RECORD"
             
-        # Isolate fastest active racing loop
         fastest_lap_row = df_laps.loc[df_laps['lap_duration'].idxmin()]
         start_time_str = fastest_lap_row['date_start']
         duration = fastest_lap_row['lap_duration']
@@ -270,6 +266,17 @@ def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         df_a['date'] = pd.to_datetime(df_a['date'])
         df_b['date'] = pd.to_datetime(df_b['date'])
         
+        # FIXED: Enforce absolute synchronous alignment boundaries across common timestamps.
+        # This completely drops dead trailing lines and stops fake multi-second delta leakage.
+        last_common_date = min(df_a['date'].max(), df_b['date'].max())
+        first_common_date = max(df_a['date'].min(), df_b['date'].min())
+        
+        df_a = df_a[(df_a['date'] >= first_common_date) & (df_a['date'] <= last_common_date)]
+        df_b = df_b[(df_b['date'] >= first_common_date) & (df_b['date'] <= last_common_date)]
+        
+        if df_a.empty or df_b.empty or len(df_a) < 10 or len(df_b) < 10:
+            return None, None, "ASYNC_STREAM_GAP"
+            
         df_merged = pd.merge_asof(df_a, df_b, on='date', suffixes=('_a', '_b'), direction='nearest')
         
         time_deltas = df_merged['date'].diff().dt.total_seconds().fillna(0.24)
@@ -375,13 +382,13 @@ with sum_col5:
 st.markdown(f"> **Strategic Intelligence Note:** This analytical dashboard evaluates micro-variances in the performance envelopes of **{driver_a}** and **{driver_b}** during the **{selected_session_label}** session.")
 st.markdown("---")
 
-# RESTORED: Dynamic Recruiter guidance banner triggers if live data streams are blank or missing (DNS/DNF)
+# RESTORED: Portfolio warning guidance blocks prompt recruiters to activate sandbox mode safely
 if is_simulated_active and not demo_mode:
-    st.warning(f"📋 **Data Stream Status Indicator ({engine_status}):** The selected driver combination or live endpoint did not register a continuous dataset layout on the server for the {selected_year} {event_name}. This typically happens during real-world DNS/DNF events or telemetry blackouts.")
-    st.info("💡 **Recruiter Portfolio Review Tip:** Please activate the **🖥️ Enable Simulated Demo Mode** toggle in the sidebar to review full, track-accurate multi-axis charting profiles instantly.")
+    st.warning(f"📋 **Data Stream Gapping Identified ({engine_status}):** The live open server endpoints returned truncated telemetry packages for {selected_year} {event_name}. This occurs when an event session contains extensive data dropouts.")
+    st.info("💡 **Recruiter Note:** To review smooth, un-gapped telemetry traces and fully aligned data shapes without waiting for network buffers, toggle **'Enable Simulated Demo Mode'** inside the left control panel.")
 
 if is_simulated_active:
-    st.sidebar.info("🖥️ Status: Sandbox Simulator Active")
+    st.sidebar.info("### 🖥️ Status: Sandbox Simulator Active")
 else:
     st.sidebar.success("✅ Status: Live Server Online")
 
