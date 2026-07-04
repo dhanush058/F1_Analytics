@@ -3,45 +3,64 @@ import fastf1
 import fastf1.plotting
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import pandas as pd
 
-# --- 1. CONFIG & CACHING ---
-# Cache data to prevent redundant API calls and speed up your dashboard
+# --- 1. CONFIG & THEME ---
 fastf1.Cache.enable_cache('f1_cache')
 st.set_page_config(layout="wide", page_title="F1 Analytics Pro")
+st.markdown("""
+<style>
+    .metric-card { background-color: #0E1117; border: 2px solid #00FFFF; padding: 10px; border-radius: 8px; text-align: center; }
+    h3 { color: #00FFFF; margin: 0; font-size: 20px; }
+    [data-testid="stAppViewContainer"] { background-color: #050505; color: #FFFFFF; }
+</style>
+""", unsafe_allow_html=True)
 
-# --- 2. DATA PIPELINE ---
-def get_lap_data(year, gp, session_name, driver_code):
-    session = fastf1.get_session(year, gp, session_name)
-    session.load()
-    # Pick the fastest lap for the driver
-    lap = session.laps.pick_driver(driver_code).pick_fastest()
-    return lap.get_telemetry()
-
-# --- 3. UI ---
-st.title("🚀 Fastest Lap Telemetry")
+# --- 2. DYNAMIC SELECTORS ---
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
-gp = st.sidebar.text_input("Grand Prix (e.g., 'Bahrain')", "Bahrain")
-session_name = st.sidebar.selectbox("Session", ['FP1', 'FP2', 'FP3', 'Q', 'R'])
-d1 = st.sidebar.text_input("Driver A Code (e.g., 'NOR')", "NOR")
-d2 = st.sidebar.text_input("Driver B Code (e.g., 'VER')", "VER")
+events = fastf1.get_event_schedule(year)
+gp_names = events['EventName'].tolist()
+selected_gp = st.sidebar.selectbox("Grand Prix", gp_names)
 
-# --- 4. ENGINE ---
-if st.button("Analyze"):
-    try:
-        df_a = get_lap_data(year, gp, session_name, d1)
-        df_b = get_lap_data(year, gp, session_name, d2)
-        
-        # Plotting
-        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, subplot_titles=("Speed", "Throttle", "Delta"))
-        fig.add_trace(go.Scatter(x=df_a['Distance'], y=df_a['Speed'], name=d1), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df_b['Distance'], y=df_b['Speed'], name=d2), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df_a['Distance'], y=df_a['Throttle'], name=f"{d1} Throttle"), row=2, col=1)
-        
-        # Delta calculation using FastF1's built-in alignment
-        delta = fastf1.utils.delta_time(df_a, df_b)
-        fig.add_trace(go.Scatter(x=df_a['Distance'], y=delta, name="Delta"), row=3, col=1)
-        
-        fig.update_layout(template="plotly_dark", height=700)
-        st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error: {e}. Please ensure the GP name and Driver codes are correct.")
+event = events[events['EventName'] == selected_gp].iloc[0]
+session = fastf1.get_session(year, selected_gp, 'Q')
+session.load(telemetry=True, laps=True)
+
+driver_list = session.results['FullName'].tolist()
+d1 = st.sidebar.selectbox("Driver A", driver_list)
+d2 = st.sidebar.selectbox("Ref Driver", driver_list)
+
+# --- 3. DATA ENGINE ---
+def get_fastest_lap(name):
+    code = session.results[session.results['FullName'] == name]['Abbreviation'].iloc[0]
+    return session.laps.pick_driver(code).pick_fastest()
+
+lap_a = get_fastest_lap(d1)
+lap_b = get_fastest_lap(d2)
+tel_a, tel_b = lap_a.get_telemetry(), lap_b.get_telemetry()
+
+# --- 4. DASHBOARD ---
+st.title(f"🚀 {selected_gp} Qualifying Analysis")
+
+# Executive Summary
+delta_time = fastf1.utils.delta_time(lap_a, lap_b)
+c1, c2, c3, c4, c5 = st.columns(5)
+c1.markdown(f'<div class="metric-card"><small>MAX VEL</small><h3>{tel_a["Speed"].max():.0f} km/h</h3></div>', unsafe_allow_html=True)
+c2.markdown(f'<div class="metric-card"><small>MAX GAP</small><h3>{delta_time.abs().max():.3f} s</h3></div>', unsafe_allow_html=True)
+c3.markdown(f'<div class="metric-card"><small>AVG THROTTLE</small><h3>{tel_a["Throttle"].mean():.1f}%</h3></div>', unsafe_allow_html=True)
+c4.markdown(f'<div class="metric-card"><small>SECTOR 1</small><h3>{lap_a["Sector1Time"].total_seconds():.2f}s</h3></div>', unsafe_allow_html=True)
+c5.markdown(f'<div class="metric-card"><small>SECTOR 2</small><h3>{lap_a["Sector2Time"].total_seconds():.2f}s</h3></div>', unsafe_allow_html=True)
+
+# Plotting
+fig = make_subplots(rows=3, cols=1, shared_xaxes=True, subplot_titles=("Speed", "Throttle", "Delta"))
+fig.add_trace(go.Scatter(x=tel_a['Distance'], y=tel_a['Speed'], name=d1), row=1, col=1)
+fig.add_trace(go.Scatter(x=tel_b['Distance'], y=tel_b['Speed'], name=d2), row=1, col=1)
+fig.add_trace(go.Scatter(x=tel_a['Distance'], y=tel_a['Throttle'], name=f"{d1} Throttle"), row=2, col=1)
+fig.add_trace(go.Scatter(x=tel_a['Distance'], y=delta_time, name="Delta (s)"), row=3, col=1)
+fig.update_layout(template="plotly_dark", height=700)
+st.plotly_chart(fig, use_container_width=True)
+
+# --- 5. COMPREHENSIVE GUIDE ---
+with st.expander("📖 Quick Guide"):
+    st.write("**For Non-Tech:** This dashboard shows how two drivers compare on their best lap. 'Delta' is the time difference—if it's positive, the ref driver is faster; if negative, Driver A is faster.")
+    st.write("**For Tech:** We use FastF1 to extract raw telemetry. The 'Delta' is calculated via temporal alignment of the two laps across distance, highlighting braking performance and acceleration out of corners.")
