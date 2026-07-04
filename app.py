@@ -6,21 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # =========================================================
-# ⚙️ SYSTEM STORAGE CACHE LAYERS
-# =========================================================
-@st.cache_data(ttl=300, show_spinner=False)
-def fetch_api_json(url):
-    """Queries public REST endpoints with strict timeout constraints."""
-    try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-    return None
-
-# =========================================================
-# 🏎️ MASTER TRACK DATA BASELINE (FOR 100% PRECISION INTEGRATION)
+# 🏎️ MASTER GLOBAL DATABASES (DEFINED FIRST TO PREVENT REFERENCE ERRORS)
 # =========================================================
 TRACK_METRICS_DB = {
     "melbourne": {"length": 5278, "corners": 14},
@@ -50,7 +36,6 @@ TRACK_METRICS_DB = {
     "yas marina": {"length": 5281, "corners": 16}
 }
 
-# Multi-Season Master Database Calendar Configurations
 seasonal_schedule = {
     2026: {
         "races": {
@@ -108,7 +93,66 @@ seasonal_schedule = {
     }
 }
 
-active_config = seasonal_schedule[selected_year]
+# =========================================================
+# ⚙️ SYSTEM STORAGE CACHE LAYERS
+# =========================================================
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_api_json(url):
+    """Queries public REST endpoints with strict timeout constraints."""
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            return response.json()
+    except Exception:
+        pass
+    return None
+
+# =========================================================
+# 🏎️ APP LAYOUT & SIDEBAR COMPILING
+# =========================================================
+st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
+
+st.markdown("""
+    <style>
+        .f1-banner {
+            background: linear-gradient(90deg, #FF0000 0%, #1E1E24 100%);
+            padding: 12px;
+            border-radius: 4px;
+            border-left: 6px solid #FF0000;
+            margin-bottom: 20px;
+        }
+        .f1-title {
+            color: #FFFFFF !important;
+            font-family: 'Titillium Web', sans-serif;
+            font-weight: 800;
+            letter-spacing: 1px;
+            margin: 0px !important;
+            font-size: 26px;
+        }
+        .metric-card {
+            background-color: #151922;
+            border: 1px solid #222933;
+            border-top: 3px solid #FF0000;
+            padding: 10px;
+            border-radius: 4px;
+            min-height: 85px;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="f1-banner"><h1 class="f1-title">🏎️ FORMULA 1 SPATIAL TELEMETRY PERFORMANCE ANALYZER</h1></div>', unsafe_allow_html=True)
+
+st.sidebar.markdown("### 🛠️ Portfolio Control Panel")
+demo_mode = st.sidebar.toggle(
+    "🖥️ Enable Simulated Demo Mode", 
+    value=False, 
+    help="Toggle this on to view full dashboard capabilities instantly if the public F1 API is throttled or offline."
+)
+
+selected_year = st.sidebar.selectbox("Select Season", [2026, 2025, 2024], index=0)
+
+# Safe top-down resolution now that seasonal_schedule is globally locked
+active_config = seasonal_schedule[int(selected_year)]
 race_options = active_config["races"]
 location_map = active_config["locations"]
 
@@ -129,7 +173,7 @@ selected_session_api_name = session_options[selected_session_label]
 target_location = location_map[selected_round]
 event_name = race_options[selected_round]
 
-# Resolve track constraints from our unified engineering DB
+# Resolve track constraints safely from our verified DB
 track_key = target_location.lower()
 track_spec = TRACK_METRICS_DB.get(track_key, {"length": 5000, "corners": 15})
 true_circuit_length = track_spec["length"]
@@ -189,7 +233,6 @@ def fetch_precision_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         num_a = d_map[d_a]
         num_b = d_map[d_b]
         
-        # Determine driver A's absolute fastest lap time to avoid pit out-lap anomalies
         laps_url = f"https://api.openf1.org/v1/laps?session_key={int(s_key)}&driver_number={int(num_a)}"
         all_laps = fetch_api_json(laps_url)
         if not all_laps:
@@ -208,7 +251,6 @@ def fetch_precision_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         
         time_filter = f"&date>={start_dt.strftime('%Y-%m-%dT%H:%M:%S')}&date<={end_dt.strftime('%Y-%m-%dT%H:%M:%S')}"
         
-        # Query sensor streams
         url_a = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_a)}{time_filter}"
         res_a = requests.get(url_a, timeout=12).json()
         url_b = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_b)}{time_filter}"
@@ -217,7 +259,6 @@ def fetch_precision_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         if not res_a or not res_b or len(res_a) < 15 or len(res_b) < 15:
             return None, None, True
             
-        # Parse Vector A
         df_a = pd.DataFrame(res_a)
         tel_a = pd.DataFrame()
         tel_a['Speed'] = df_a['speed'].astype(float)
@@ -228,11 +269,9 @@ def fetch_precision_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         raw_dist_a = (tel_a['Speed'] / 3.6 * time_deltas_a).cumsum()
         tel_a['Time_Elapsed'] = (time_deltas_a).cumsum()
 
-        # Enforce strict spatial calibration to 100% true physical boundaries
         max_dist_a = raw_dist_a.max() if raw_dist_a.max() > 0 else 1.0
         tel_a['Distance'] = (raw_dist_a / max_dist_a) * target_length
 
-        # Parse Vector B
         df_b = pd.DataFrame(res_b)
         tel_b = pd.DataFrame()
         tel_b['Speed'] = df_b['speed'].astype(float)
@@ -246,7 +285,6 @@ def fetch_precision_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         max_dist_b = raw_dist_b.max() if raw_dist_b.max() > 0 else 1.0
         tel_b['Distance'] = (raw_dist_b / max_dist_b) * target_length
         
-        # Align spatial planes cleanly
         interpolated_time_b = np.interp(tel_a['Distance'], tel_b['Distance'], tel_b['Time_Elapsed'])
         tel_a['Delta_Time'] = tel_a['Time_Elapsed'] - interpolated_time_b
         
@@ -335,7 +373,7 @@ st.markdown(f"> **Strategic Intelligence Note:** This analytical dashboard evalu
 st.markdown("---")
 
 # =========================================================
-# 📈 PLOTLY THREE-TIER MULTI-AXIS CHART ENGINE (FROZEN)
+# 📈 PLOTLY THREE-TIER MULTI-AXIS CHART ENGINE
 # =========================================================
 label_suffix = f" ({selected_session_label})"
 fig = make_subplots(
