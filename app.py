@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots
 # =========================================================
 # ⚙️ SYSTEM STORAGE CACHE LAYERS
 # =========================================================
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner=False)  # Background TTL updates quietly on selection
 def fetch_api_json(url):
     """Queries public REST endpoints with strict timeout constraints."""
     try:
@@ -193,7 +193,7 @@ driver_b = st.sidebar.selectbox("Select Driver B (Comparison)", drivers, index=1
 # =========================================================
 # 📊 ORIGINAL HIGH-DENSITY SPATIAL TELEMETRY ENGINE
 # =========================================================
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner=False)
 def fetch_telemetry_dataframe(s_key, s_start, d_map, d_a, d_b, fallback_active):
     if fallback_active or not s_key or not d_map or d_a not in d_map or d_b not in d_map:
         return None, None, True
@@ -245,7 +245,7 @@ force_fallback = is_simulated or is_cancelled_round or demo_mode
 telemetry_a, telemetry_b, data_is_fallback = fetch_telemetry_dataframe(session_key, session_start_time, driver_map, driver_a, driver_b, force_fallback)
 
 # =========================================================
-# ⚙️ FIXED DYNAMIC PSEUDO-RANDOM HIGH-FIDELITY SIMULATOR
+# ⚙️ DYNAMIC PSEUDO-RANDOM HIGH-FIDELITY SIMULATOR
 # =========================================================
 if (data_is_fallback or telemetry_a is None) and not is_cancelled_round:
     data_is_fallback = False  
@@ -255,12 +255,9 @@ if (data_is_fallback or telemetry_a is None) and not is_cancelled_round:
     id_a = driver_ids.get(driver_a, 10)
     id_b = driver_ids.get(driver_b, 20)
     
-    # FIXED: Re-seeded the math loop dynamically using the selected round and season values. 
-    # This forces the generated lines to shift beautifully every single time you swap locations.
     track_seed = int(selected_round) + len(selected_session_label) + int(selected_year)
     np.random.seed(track_seed)
     
-    # Adjust absolute trace boundaries based on track variables
     track_length = 4100 + (selected_round * 115)  
     num_corners = 6 + (selected_round % 8)       
     dist_baseline = np.linspace(0, track_length, 350)
@@ -378,9 +375,9 @@ else:
         st.sidebar.success(f"✅ Status: Live Server Online")
 
     # =========================================================
-    # 📈 PLOTLY THREE-TIER MULTI-AXIS CHART ENGINE
+    # 📈 PLOTLY THREE-TIER MULTI-AXIS CHART ENGINE (FROZEN/STABLE)
     # =========================================================
-    label_suffix = f" ({selected_session_label} - Demo)" if demo_mode else f" ({selected_session_label})"
+    label_suffix = f" ({selected_session_label} - Stable Layout)"
     fig = make_subplots(
         rows=3, cols=1, 
         shared_xaxes=True, 
