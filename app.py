@@ -20,14 +20,12 @@ def fetch_api_json(url):
     return None
 
 # =========================================================
-# 🏎️ THE ORIGINAL UI CONFIGURATION (DYNAMIC MULTI-SEASON ENGINE)
+# 🏎️ MULTI-SEASON CONFIGURATION (ACCURATE CALENDARS)
 # =========================================================
 st.set_page_config(page_title="F1 Spatial Telemetry Analyzer", layout="wide")
 
-# F1 THEME INJECTED STYLE OVERRIDES (STRICTLY NON-DESTRUCTIVE INTERFACE)
 st.markdown("""
     <style>
-        /* F1 Racing Theme Branding Accent */
         .f1-banner {
             background: linear-gradient(90deg, #FF0000 0%, #1E1E24 100%);
             padding: 12px;
@@ -43,7 +41,6 @@ st.markdown("""
             margin: 0px !important;
             font-size: 26px;
         }
-        /* Executive Dashboard Matrix Box styling - Compressed for Single Row */
         .metric-card {
             background-color: #151922;
             border: 1px solid #222933;
@@ -55,10 +52,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Custom Themed Racing Header Block
 st.markdown('<div class="f1-banner"><h1 class="f1-title">🏎️ FORMULA 1 SPATIAL TELEMETRY PERFORMANCE ANALYZER</h1></div>', unsafe_allow_html=True)
 
-# Strategic Recruiter Overrides in the Sidebar
 st.sidebar.markdown("### 🛠️ Portfolio Control Panel")
 demo_mode = st.sidebar.toggle(
     "🖥️ Enable Simulated Demo Mode", 
@@ -73,11 +68,11 @@ seasonal_schedule = {
     2026: {
         "races": {
             1: "Australian Grand Prix", 2: "Chinese Grand Prix", 3: "Japanese Grand Prix",
-            4: "Bahrain Grand Prix (Cancelled)", 5: "Saudi Arabian Grand Prix (Cancelled)", 6: "Miami Grand Prix",
+            4: "Bahrain Grand Prix", 5: "Saudi Arabian Grand Prix", 6: "Miami Grand Prix",
             7: "Canadian Grand Prix", 8: "Monaco Grand Prix", 9: "Barcelona-Catalunya Grand Prix",
             10: "Austrian Grand Prix", 11: "British Grand Prix", 12: "Belgian Grand Prix",
             13: "Hungarian Grand Prix", 14: "Dutch Grand Prix", 15: "Italian Grand Prix",
-            16: "Spanish Grand Prix (Madrid Layout)", 17: "Azerbaijan Grand Prix", 18: "Singapore Grand Prix",
+            16: "Spanish Grand Prix (Madrid)", 17: "Azerbaijan Grand Prix", 18: "Singapore Grand Prix",
             19: "United States Grand Prix", 20: "Mexico City Grand Prix", 21: "São Paulo Grand Prix",
             22: "Las Vegas Grand Prix", 23: "Qatar Grand Prix", 24: "Abu Dhabi Grand Prix"
         },
@@ -87,7 +82,7 @@ seasonal_schedule = {
             13: "Budapest", 14: "Zandvoort", 15: "Monza", 16: "Madrid", 17: "Baku", 18: "Marina Bay",
             19: "Austin", 20: "Mexico City", 21: "São Paulo", 22: "Las Vegas", 23: "Lusail", 24: "Yas Marina"
         },
-        "cancelled_rounds": [4, 5]
+        "cancelled_rounds": []
     },
     2025: {
         "races": {
@@ -102,7 +97,7 @@ seasonal_schedule = {
         },
         "locations": {
             1: "Melbourne", 2: "Shanghai", 3: "Suzuka", 4: "Sakhir", 5: "Jeddah", 6: "Miami",
-            7: "Spielberg", 8: "Monaco", 9: "Barcelona", 10: "Montreal", 11: "Spielberg", 12: "Silverstone",
+            7: "Imola", 8: "Monaco", 9: "Barcelona", 10: "Montreal", 11: "Spielberg", 12: "Silverstone",
             13: "Spa", 14: "Budapest", 15: "Zandvoort", 16: "Monza", 17: "Baku", 18: "Marina Bay",
             19: "Austin", 20: "Mexico City", 21: "São Paulo", 22: "Las Vegas", 23: "Lusail", 24: "Yas Marina"
         },
@@ -121,7 +116,7 @@ seasonal_schedule = {
         },
         "locations": {
             1: "Sakhir", 2: "Jeddah", 3: "Melbourne", 4: "Suzuka", 5: "Shanghai", 6: "Miami",
-            7: "Spielberg", 8: "Monaco", 9: "Montreal", 10: "Barcelona", 11: "Spielberg", 12: "Silverstone",
+            7: "Imola", 8: "Monaco", 9: "Montreal", 10: "Barcelona", 11: "Spielberg", 12: "Silverstone",
             13: "Budapest", 14: "Spa", 15: "Zandvoort", 16: "Monza", 17: "Baku", 18: "Marina Bay",
             19: "Austin", 20: "Mexico City", 21: "São Paulo", 22: "Las Vegas", 23: "Lusail", 24: "Yas Marina"
         },
@@ -129,7 +124,6 @@ seasonal_schedule = {
     }
 }
 
-# Resolve active dataset based on year selection drop-down matrix
 active_config = seasonal_schedule[selected_year]
 race_options = active_config["races"]
 location_map = active_config["locations"]
@@ -163,6 +157,7 @@ is_cancelled_round = selected_round in active_config["cancelled_rounds"]
 # 🌐 OPENF1 METADATA RESOLVER
 # =========================================================
 session_key = None
+session_start_time = None
 driver_map = {}
 is_simulated = True
 event_name = race_options[selected_round]
@@ -182,6 +177,7 @@ if not is_cancelled_round and not demo_mode:
             
         if matched_session:
             session_key = matched_session.get('session_key')
+            session_start_time = matched_session.get('date_start')
             driver_url = f"https://api.openf1.org/v1/drivers?session_key={session_key}"
             drivers_data = fetch_api_json(driver_url)
             
@@ -194,7 +190,6 @@ if not is_cancelled_round and not demo_mode:
                 if driver_map:
                     is_simulated = False
 
-# Driver Selection Sidebars
 if not is_simulated and driver_map and not demo_mode:
     drivers = sorted(list(driver_map.keys()))
 else:
@@ -204,10 +199,10 @@ driver_a = st.sidebar.selectbox("Select Driver A (Baseline)", drivers, index=0)
 driver_b = st.sidebar.selectbox("Select Driver B (Comparison)", drivers, index=1 if len(drivers) > 1 else 0)
 
 # =========================================================
-# 📊 DATA-VALIDATED TELEMETRY EXTRACTION ENGINE
+# 📊 DATA-VALIDATED TELEMETRY EXTRACTION ENGINE (ROBUST SLICE)
 # =========================================================
 @st.cache_data(ttl=1800, show_spinner="Querying telemetry pipeline matrix...")
-def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
+def fetch_telemetry_dataframe(s_key, s_start, d_map, d_a, d_b, fallback_active):
     if fallback_active or not s_key or not d_map or d_a not in d_map or d_b not in d_map:
         return None, None, True
 
@@ -215,18 +210,13 @@ def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
         num_a = d_map[d_a]
         num_b = d_map[d_b]
         
-        lap_url_a = f"https://api.openf1.org/v1/laps?session_key={int(s_key)}&driver_number={int(num_a)}&lap_number=2"
-        lap_data = requests.get(lap_url_a, timeout=4).json()
+        # Guard clause: Use session start date to slice a lightweight workload for the database
+        date_filter = f"&date>={s_start}" if s_start else ""
         
-        if not lap_data:
-            return None, None, True
-            
-        start_time = lap_data[0]['date_start']
-        
-        url_a = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_a)}&date>={start_time}"
+        url_a = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_a)}{date_filter}"
         res_a = requests.get(url_a, timeout=5).json()
         
-        url_b = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_b)}&date>={start_time}"
+        url_b = f"https://api.openf1.org/v1/car_data?session_key={int(s_key)}&driver_number={int(num_b)}{date_filter}"
         res_b = requests.get(url_b, timeout=5).json()
         
         if not res_a or not res_b or len(res_a) < 20 or len(res_b) < 20:
@@ -237,7 +227,7 @@ def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
         tel_a['Speed'] = df_a['speed'].astype(float)
         tel_a['Throttle'] = df_a['throttle'].astype(float) if 'throttle' in df_a.columns else 90.0
         df_a['date'] = pd.to_datetime(df_a['date'])
-        time_deltas_a = df_a['date'].diff().dt.total_seconds().fillna(0.27)
+        time_deltas_a = df_a['date'].diff().dt.total_seconds().fillna(0.24)
         tel_a['Distance'] = (tel_a['Speed'] / 3.6 * time_deltas_a).cumsum()
         tel_a['Time_Elapsed'] = (time_deltas_a).cumsum()
 
@@ -246,7 +236,7 @@ def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
         tel_b['Speed'] = df_b['speed'].astype(float)
         tel_b['Throttle'] = df_b['throttle'].astype(float) if 'throttle' in df_b.columns else 88.0
         df_b['date'] = pd.to_datetime(df_b['date'])
-        time_deltas_b = df_b['date'].diff().dt.total_seconds().fillna(0.27)
+        time_deltas_b = df_b['date'].diff().dt.total_seconds().fillna(0.24)
         tel_b['Distance'] = (tel_b['Speed'] / 3.6 * time_deltas_b).cumsum()
         tel_b['Time_Elapsed'] = (time_deltas_b).cumsum()
         
@@ -257,12 +247,11 @@ def fetch_telemetry_dataframe(s_key, d_map, d_a, d_b, fallback_active):
     except Exception:
         return None, None, True
 
-# Run data calculations
 force_fallback = is_simulated or is_cancelled_round or demo_mode
-telemetry_a, telemetry_b, data_is_fallback = fetch_telemetry_dataframe(session_key, driver_map, driver_a, driver_b, force_fallback)
+telemetry_a, telemetry_b, data_is_fallback = fetch_telemetry_dataframe(session_key, session_start_time, driver_map, driver_a, driver_b, force_fallback)
 
 # =========================================================
-# ⚙️ DYNAMIC PSEUDO-RANDOM HIGH-FIDELITY SIMULATOR 
+# ⚙️ DYNAMIC SIMULATOR CORE
 # =========================================================
 if (data_is_fallback or telemetry_a is None) and demo_mode:
     data_is_fallback = False  
@@ -304,7 +293,7 @@ if (data_is_fallback or telemetry_a is None) and demo_mode:
     telemetry_b = pd.DataFrame({'Distance': dist_baseline, 'Speed': speed_b, 'Throttle': throttle_b})
 
 # =========================================================
-# 📑 EXECUTIVE SUMMARY & ANCHOR KPI MATRIX (5 METRICS)
+# 📑 EXECUTIVE SUMMARY & ANCHOR KPI MATRIX
 # =========================================================
 if telemetry_a is not None and telemetry_b is not None:
     total_dist = f"{int(telemetry_a['Distance'].max()):,} m"
@@ -383,7 +372,7 @@ st.markdown(f"""
 st.markdown("---")
 
 # =========================================================
-# 📊 CONDITIONAL RENDERING LAYER (SMART DIAGNOSTIC ENGINE)
+# 📊 CONDITIONAL RENDERING LAYER (SMART ERROR SEPARATION)
 # =========================================================
 if is_cancelled_round:
     st.sidebar.error("🚨 Status: Round Cancelled")
@@ -407,7 +396,7 @@ else:
         st.success(f"✅ **Data Lineage Confirmed:** Successfully parsed 100% authentic raw telemetry arrays for the {selected_year} {event_name} {selected_session_label} session!")
 
     # =========================================================
-    # 📈 PLOTLY THREE-TIER MULTI-AXIS CHART ENGINE (NEON GLOW)
+    # 📈 PLOTLY THREE-TIER MULTI-AXIS CHART ENGINE
     # =========================================================
     label_suffix = f" ({selected_session_label} - Demo)" if demo_mode else f" ({selected_session_label})"
     fig = make_subplots(
