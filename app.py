@@ -4,8 +4,8 @@ import requests
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# --- 1. CONFIG ---
-st.set_page_config(layout="wide", page_title="F1 Telemetry Pro")
+# --- 1. CONFIG & NEON THEME ---
+st.set_page_config(layout="wide", page_title="F1 Analytics Pro")
 st.markdown("""
 <style>
     .metric-card { background-color: #0E1117; border: 2px solid #00FFFF; padding: 15px; border-radius: 10px; text-align: center; }
@@ -17,31 +17,28 @@ st.markdown("""
 class F1DataPipeline:
     def fetch(self, endpoint, params=None):
         try:
-            # Standardizing request parameters
             res = requests.get(f"https://api.openf1.org/v1/{endpoint}", params=params, timeout=10)
             return res.json() if res.status_code == 200 else []
         except: return []
 
     def get_telemetry(self, s_key, d_num):
-        # 1. Fetch all laps
+        # 1. Fetch laps and filter for those containing valid timing keys
         laps = self.fetch("laps", {"session_key": s_key, "driver_number": d_num})
-        # Filter only valid laps
-        valid_laps = [l for l in laps if l.get('lap_duration') and l.get('date_start')]
+        valid_laps = [l for l in laps if l.get('lap_duration') and l.get('date_start') and l.get('date_end')]
         
-        # 2. Attempt to fetch specific fastest lap
+        # 2. Attempt to fetch fastest lap telemetry with strict bounds
         if valid_laps:
             fastest = min(valid_laps, key=lambda x: x['lap_duration'])
-            # Use strict timestamp filtering
             params = {
                 "session_key": s_key, 
                 "driver_number": d_num,
-                "date>": fastest['date_start'], 
-                "date<": fastest['date_end']
+                "date>=": fastest['date_start'], 
+                "date<=": fastest['date_end']
             }
             data = self.fetch("car_data", params)
             if data: return pd.DataFrame(data)
             
-        # 3. Fallback to full session if fastest lap query fails
+        # 3. Fallback: fetch full session if lap-specific telemetry fails
         data = self.fetch("car_data", {"session_key": s_key, "driver_number": d_num})
         return pd.DataFrame(data) if data else pd.DataFrame()
 
