@@ -96,7 +96,7 @@ seasonal_schedule = {
 # =========================================================
 # ⚙️ SYSTEM STORAGE CACHE LAYERS
 # =========================================================
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def fetch_api_json(url):
     try:
         response = requests.get(url, timeout=10)
@@ -220,10 +220,11 @@ driver_a = st.sidebar.selectbox("Select Driver A (Baseline)", drivers, index=0)
 driver_b = st.sidebar.selectbox("Select Driver B (Comparison)", drivers, index=1 if len(drivers) > 1 else 0)
 
 # =========================================================
-# 📊 SYNCHRONOUS VALIDATION TELEMETRY ENGINE
+# 📊 SYNCHRONOUS TELEMETRY ENGINE WITH CACHE BREAKERS
 # =========================================================
-@st.cache_data(ttl=300, show_spinner=False)
-def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_active):
+# FIXED: Added track_key and selected_year to the cache key to destroy old ghost data frames instantly
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_active, track_id, year_id):
     if fallback_active or not s_key or not d_map or d_a not in d_map or d_b not in d_map:
         return None, None, "MISSING_METADATA"
 
@@ -266,19 +267,16 @@ def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
         df_a['date'] = pd.to_datetime(df_a['date'])
         df_b['date'] = pd.to_datetime(df_b['date'])
         
-        # FIXED: Enforce absolute synchronous alignment boundaries across common timestamps.
-        # This completely drops dead trailing lines and stops fake multi-second delta leakage.
-        last_common_date = min(df_a['date'].max(), df_b['date'].max())
-        first_common_date = max(df_a['date'].min(), df_b['date'].min())
+        # FIXED: Enforce a strict merge tolerance window. 
+        # Drops trailing dead data instantly if an API stream stops broadcasting mid-session.
+        df_merged = pd.merge_asof(
+            df_a, df_b, on='date', suffixes=('_a', '_b'), 
+            direction='nearest', tolerance=pd.Timedelta(seconds=1)
+        ).dropna(subset=['speed_b'])
         
-        df_a = df_a[(df_a['date'] >= first_common_date) & (df_a['date'] <= last_common_date)]
-        df_b = df_b[(df_b['date'] >= first_common_date) & (df_b['date'] <= last_common_date)]
-        
-        if df_a.empty or df_b.empty or len(df_a) < 10 or len(df_b) < 10:
+        if len(df_merged) < 10:
             return None, None, "ASYNC_STREAM_GAP"
             
-        df_merged = pd.merge_asof(df_a, df_b, on='date', suffixes=('_a', '_b'), direction='nearest')
-        
         time_deltas = df_merged['date'].diff().dt.total_seconds().fillna(0.24)
         time_deltas = np.where((time_deltas < 0.005) | (time_deltas > 5.0), 0.24, time_deltas)
         
@@ -306,7 +304,7 @@ def fetch_authentic_telemetry(s_key, d_map, d_a, d_b, target_length, fallback_ac
 
 force_fallback = is_simulated or demo_mode
 telemetry_a, telemetry_b, engine_status = fetch_authentic_telemetry(
-    session_key, driver_map, driver_a, driver_b, true_circuit_length, force_fallback
+    session_key, driver_map, driver_a, driver_b, true_circuit_length, force_fallback, track_key, selected_year
 )
 
 # =========================================================
@@ -382,10 +380,10 @@ with sum_col5:
 st.markdown(f"> **Strategic Intelligence Note:** This analytical dashboard evaluates micro-variances in the performance envelopes of **{driver_a}** and **{driver_b}** during the **{selected_session_label}** session.")
 st.markdown("---")
 
-# RESTORED: Portfolio warning guidance blocks prompt recruiters to activate sandbox mode safely
+# RESTORED: Direct alert notification box prompts recruiter overview when data is sparse
 if is_simulated_active and not demo_mode:
-    st.warning(f"📋 **Data Stream Gapping Identified ({engine_status}):** The live open server endpoints returned truncated telemetry packages for {selected_year} {event_name}. This occurs when an event session contains extensive data dropouts.")
-    st.info("💡 **Recruiter Note:** To review smooth, un-gapped telemetry traces and fully aligned data shapes without waiting for network buffers, toggle **'Enable Simulated Demo Mode'** inside the left control panel.")
+    st.warning(f"📋 **Data Stream Status Notice ({engine_status}):** The open REST endpoints did not return a clean dataset loop for the {selected_year} {event_name}. This is standard behavior for active seasons where endpoints are speed-throttled.")
+    st.info("💡 **Recruiter Portfolio Evaluation Tip:** To review beautifully structured, aligned plots immediately without data drops, toggle **'Enable Simulated Demo Mode'** in the side panel.")
 
 if is_simulated_active:
     st.sidebar.info("### 🖥️ Status: Sandbox Simulator Active")
