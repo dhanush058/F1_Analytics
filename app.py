@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# --- 1. CONFIG & API ENGINE ---
+# --- CONFIG ---
 st.set_page_config(layout="wide", page_title="F1 Analytics Pro")
 st.markdown("""
 <style>
@@ -20,7 +20,7 @@ def fetch_api(endpoint, params=None):
         return res.json() if res.status_code == 200 else []
     except: return []
 
-# --- 2. HIERARCHICAL UI ---
+# --- UI & SELECTION ---
 st.title("🏎️ F1 Premium Telemetry")
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
 meetings = fetch_api("meetings", {"year": year})
@@ -39,27 +39,33 @@ if selected_gp:
         d1 = st.sidebar.selectbox("Driver A", list(driver_map.keys()))
         d2 = st.sidebar.selectbox("Ref Driver", list(driver_map.keys()))
 
-        # --- 3. DATA PROCESSING ---
+        # --- DATA PROCESSING ---
         def get_tel(name):
             d_num = driver_map[name]
             laps = fetch_api("laps", {"session_key": s_key, "driver_number": d_num})
-            valid_laps = [l for l in laps if l.get('lap_duration')]
+            valid_laps = [l for l in laps if l.get('lap_duration') and l.get('date_start')]
             if not valid_laps: return pd.DataFrame()
             
             fastest = min(valid_laps, key=lambda x: x['lap_duration'])
             tel = fetch_api("car_data", {"session_key": s_key, "driver_number": d_num})
             df = pd.DataFrame(tel)
-            if df.empty: return df
             
-            df['date'] = pd.to_datetime(df['date'], utc=True)
-            return df[(df['date'] >= pd.to_datetime(fastest['date_start'], utc=True)) & 
-                      (df['date'] <= pd.to_datetime(fastest['date_end'], utc=True))]
+            # Robust Date Parsing
+            if df.empty or 'date' not in df.columns: return pd.DataFrame()
+            df['date'] = pd.to_datetime(df['date'], utc=True, errors='coerce')
+            df = df.dropna(subset=['date'])
+            
+            start = pd.to_datetime(fastest['date_start'], utc=True)
+            end = pd.to_datetime(fastest['date_end'], utc=True)
+            return df[(df['date'] >= start) & (df['date'] <= end)]
 
         if st.sidebar.button("Generate Analysis"):
             with st.spinner("Processing..."):
-                df_a, df_b = get_tel(d1), get_tel(d2)
+                df_a = get_tel(d1)
+                df_b = get_tel(d2)
 
             if not df_a.empty and not df_b.empty:
+                # 5 Metric Cards
                 c1, c2, c3, c4, c5 = st.columns(5)
                 c1.markdown(f'<div class="metric-card">MAX VEL A<h3>{df_a["speed"].max():.0f}</h3></div>', unsafe_allow_html=True)
                 c2.markdown(f'<div class="metric-card">AVG THR A<h3>{df_a["throttle"].mean():.0f}%</h3></div>', unsafe_allow_html=True)
@@ -67,6 +73,7 @@ if selected_gp:
                 c4.markdown(f'<div class="metric-card">GEAR A<h3>{df_a["n_gear"].mode()[0]}</h3></div>', unsafe_allow_html=True)
                 c5.markdown(f'<div class="metric-card">RPM A<h3>{df_a["rpm"].mean():.0f}</h3></div>', unsafe_allow_html=True)
 
+                # 3 Plots
                 fig = make_subplots(rows=3, cols=1, shared_xaxes=True)
                 fig.add_trace(go.Scatter(y=df_a['speed'], name=d1), row=1, col=1)
                 fig.add_trace(go.Scatter(y=df_a['throttle'], name="Throttle"), row=2, col=1)
@@ -74,4 +81,4 @@ if selected_gp:
                 fig.update_layout(template="plotly_dark", height=700)
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.error("No telemetry data found for selected session.")
+                st.error("No telemetry data found for the selected drivers in this session.")
