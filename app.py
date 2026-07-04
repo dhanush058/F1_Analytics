@@ -4,59 +4,71 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# --- 1. DATA ENGINE ---
-BASE_URL = "https://api.openf1.org/v1"
+# --- 1. CONFIG & DATA ENGINE ---
+st.set_page_config(layout="wide", page_title="F1 Analytics Pro")
+st.markdown("<style>.metric-card { background: #0E1117; border: 2px solid #00FFFF; padding: 15px; border-radius: 10px; }</style>", unsafe_allow_html=True)
 
 @st.cache_data(ttl=3600)
 def fetch_api(endpoint, params=None):
     try:
-        res = requests.get(f"{BASE_URL}/{endpoint}", params=params, timeout=15)
+        res = requests.get(f"https://api.openf1.org/v1/{endpoint}", params=params, timeout=10)
         return res.json() if res.status_code == 200 else []
     except: return []
 
-# --- 2. FASTEST LAP LOGIC ---
-def get_fastest_lap_tel(driver_name, s_key, all_drivers):
-    d_num = next(d['driver_number'] for d in all_drivers if d['full_name'] == driver_name)
+# --- 2. SIDEBAR SELECTION FLOW ---
+st.sidebar.title("Configuration")
+year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
+meetings = fetch_api("meetings", {"year": year})
+meeting_map = {m['meeting_name']: m['meeting_key'] for m in meetings}
+selected_gp = st.sidebar.selectbox("Grand Prix", list(meeting_map.keys()))
+
+# Session Select
+sessions = fetch_api("sessions", {"meeting_key": meeting_map[selected_gp]})
+session_map = {s['session_name']: s['session_key'] for s in sessions}
+selected_session = st.sidebar.selectbox("Session", list(session_map.keys()))
+
+# Driver Select
+s_key = session_map[selected_session]
+drivers = fetch_api("drivers", {"session_key": s_key})
+driver_map = {d['full_name']: d['driver_number'] for d in drivers}
+d1 = st.sidebar.selectbox("Driver A", list(driver_map.keys()))
+d2 = st.sidebar.selectbox("Ref Driver", list(driver_map.keys()))
+
+# --- 3. DATA PROCESSING ---
+def get_fastest_lap_tel(d_name, s_key):
+    d_num = driver_map[d_name]
     laps = fetch_api("laps", {"session_key": s_key, "driver_number": d_num})
-    
-    # Filter out laps with no duration/dates
-    valid_laps = [l for l in laps if l.get('lap_duration') and l.get('date_start') and l.get('date_end')]
+    valid_laps = [l for l in laps if l.get('lap_duration') and l.get('date_start')]
     if not valid_laps: return pd.DataFrame()
-    
     fastest = min(valid_laps, key=lambda x: x['lap_duration'])
-    
-    # Fetch telemetry for the whole session and slice in Pandas
     tel = fetch_api("car_data", {"session_key": s_key, "driver_number": d_num})
     df = pd.DataFrame(tel)
     if df.empty: return df
-    
     df['date'] = pd.to_datetime(df['date'])
-    start = pd.to_datetime(fastest['date_start'])
-    end = pd.to_datetime(fastest['date_end'])
-    
-    return df[(df['date'] >= start) & (df['date'] <= end)]
+    return df[(df['date'] >= pd.to_datetime(fastest['date_start'])) & 
+              (df['date'] <= pd.to_datetime(fastest['date_end']))]
 
-# --- 3. UI ---
-# (Keep your existing selection UI here...)
-# When generating plots:
-if st.button("Generate Analysis"):
-    drivers = fetch_api("drivers", {"session_key": s_key})
-    df_a = get_fastest_lap_tel(d1, s_key, drivers)
-    df_b = get_fastest_lap_tel(d2, s_key, drivers)
+# --- 4. MAIN DASHBOARD ---
+if st.sidebar.button("Generate Analysis"):
+    with st.spinner("Processing telemetry..."):
+        df_a, df_b = get_fastest_lap_tel(d1, s_key), get_fastest_lap_tel(d2, s_key)
 
     if not df_a.empty and not df_b.empty:
-        # Metrics: Calculate safely
         c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("MAX VEL (A)", f"{df_a['speed'].max():.0f} km/h")
-        c2.metric("AVG THR (A)", f"{df_a['throttle'].mean():.0f}%")
-        # Delta: Resample to compare A and B by time-index if possible, or simple max diff
-        c3.metric("MAX GAP", f"{abs(df_a['speed'].max() - df_b['speed'].max()):.1f} km/h")
-        c4.metric("GEAR (A)", f"{df_a['n_gear'].mode()[0]}")
-        c5.metric("RPM (A)", f"{df_a['rpm'].mean():.0f}")
+        c1.markdown(f'<div class="metric-card">MAX VEL A<h3>{df_a["speed"].max():.0f}</h3></div>', unsafe_allow_html=True)
+        c2.markdown(f'<div class="metric-card">AVG THR A<h3>{df_a["throttle"].mean():.0f}%</h3></div>', unsafe_allow_html=True)
+        c3.markdown(f'<div class="metric-card">MAX GAP<h3>{abs(df_a["speed"].max()-df_b["speed"].max()):.1f}</h3></div>', unsafe_allow_html=True)
+        c4.markdown(f'<div class="metric-card">GEAR A<h3>{df_a["n_gear"].mode()[0]}</h3></div>', unsafe_allow_html=True)
+        c5.markdown(f'<div class="metric-card">RPM A<h3>{df_a["rpm"].mean():.0f}</h3></div>', unsafe_allow_html=True)
 
-        # Plots
         fig = make_subplots(rows=3, cols=1, shared_xaxes=True)
-        fig.add_trace(go.Scatter(y=df_a['speed'], name="Speed A"), row=1, col=1)
-        fig.add_trace(go.Scatter(y=df_a['throttle'], name="Throttle A"), row=2, col=1)
-        fig.add_trace(go.Scatter(y=df_a['rpm'], name="RPM A"), row=3, col=1)
+        fig.add_trace(go.Scatter(y=df_a['speed'], name=d1), row=1, col=1)
+        fig.add_trace(go.Scatter(y=df_a['throttle'], name="Throttle"), row=2, col=1)
+        fig.add_trace(go.Scatter(y=df_a['speed']-df_b['speed'], name="Speed Delta"), row=3, col=1)
+        fig.update_layout(template="plotly_dark", height=800)
         st.plotly_chart(fig, use_container_width=True)
+
+        with st.expander("📖 Guide"):
+            st.write("This dashboard pulls live telemetry from the OpenF1 API. Metrics are calculated based on the fastest completed lap.")
+    else:
+        st.error("No telemetry data found for selected session.")
