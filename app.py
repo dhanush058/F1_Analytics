@@ -17,9 +17,11 @@ st.markdown("""
 @st.cache_data(ttl=3600)
 def fetch_api(endpoint, params=None):
     try:
+        # Base URL for OpenF1 API
         res = requests.get(f"https://api.openf1.org/v1/{endpoint}", params=params, timeout=10)
         return res.json() if res.status_code == 200 else []
-    except: return []
+    except: 
+        return []
 
 # --- HIERARCHICAL UI ---
 st.title("🏎️ F1 Premium Telemetry")
@@ -45,7 +47,7 @@ if selected_gp:
             d_num = driver_map[name]
             laps = fetch_api("laps", {"session_key": s_key, "driver_number": d_num})
             
-            # STRICT FILTERING: Must have duration, start, and end
+            # Robust filtering for valid lap data
             valid_laps = [
                 l for l in laps 
                 if l.get('lap_duration') is not None 
@@ -53,15 +55,18 @@ if selected_gp:
                 and l.get('date_end') is not None
             ]
             
-            if not valid_laps: return pd.DataFrame()
+            if not valid_laps: 
+                return pd.DataFrame()
             
             fastest = min(valid_laps, key=lambda x: x['lap_duration'])
             
             tel = fetch_api("car_data", {"session_key": s_key, "driver_number": d_num})
             df = pd.DataFrame(tel)
             
-            if df.empty or 'date' not in df.columns: return pd.DataFrame()
+            if df.empty or 'date' not in df.columns: 
+                return pd.DataFrame()
             
+            # Use errors='coerce' to prevent crashes on malformed date strings
             df['date'] = pd.to_datetime(df['date'], utc=True, errors='coerce')
             df = df.dropna(subset=['date'])
             
@@ -91,8 +96,5 @@ if selected_gp:
                 fig.add_trace(go.Scatter(y=df_a['speed']-df_b['speed'], name="Delta"), row=3, col=1)
                 fig.update_layout(template="plotly_dark", height=700)
                 st.plotly_chart(fig, use_container_width=True)
-
-                with st.expander("📖 Guide"):
-                    st.write("This dashboard pulls telemetry directly from the OpenF1 API. Data is filtered to the fastest completed lap for the selected drivers. All timestamps are UTC aligned.")
             else:
                 st.error("No telemetry data found for the selected drivers in this session.")
