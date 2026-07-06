@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 st.set_page_config(layout="wide", page_title="F1 Analytics: Fastest Lap")
 
 if "toast_shown" not in st.session_state:
-    st.toast("⚠️ Recruiter Note: F1 APIs often block cloud IPs or lack future data (e.g., 2026). Use 'Enable Simulation Mode' in the sidebar to evaluate the dashboard's analytics engine.", icon="🚨")
+    st.toast("⚠️ Recruiter Note: F1 APIs often block cloud IPs or lack future data. Use 'Enable Simulation Mode' in the sidebar to evaluate the dashboard's analytics engine.", icon="🚨")
     st.session_state.toast_shown = True
 
 COLOR_A = '#00FFFF'   # Neon Cyan
@@ -32,7 +32,6 @@ def get_telemetry(driver_name, s_key, drivers_df, is_sim=False, is_ref_driver=Fa
     
     if is_sim:
         # GUARANTEED VARIANCE: Driver A gets one driving style, Driver B gets another.
-        # This ensures the Delta plot is highly active and realistic.
         if not is_ref_driver:
             # Driver A: Late Braking, lower apex speed
             speed = 320 - 150 * np.exp(-((dist_ref - 1100)/130)**2) \
@@ -119,7 +118,6 @@ d2 = st.sidebar.selectbox("Ref Driver", sorted_driver_list, index=min(1, len(sor
 
 # --- 5. EXECUTION & VISUALIZATION ---
 with st.spinner("Processing Telemetry Data..."):
-    # Note: Passing `is_ref_driver=True` to the second driver guarantees distinct simulated curves
     df_a, lap_time_a = get_telemetry(d1, s_key, drivers_data, sim_mode, is_ref_driver=False)
     df_b, lap_time_b = get_telemetry(d2, s_key, drivers_data, sim_mode, is_ref_driver=True)
 
@@ -128,12 +126,11 @@ if df_a.empty or df_b.empty:
 else:
     st.title(f"Fastest Lap Telemetry: {selected_gp}")
     
-    # Metrics (5 Cards)
+    # Metrics
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("MAX VEL: DRIVER A", f"{df_a['speed'].max():.0f} km/h", d1)
     m2.metric("MAX VEL: REF DRIVER", f"{df_b['speed'].max():.0f} km/h", d2)
     
-    # Delta Math
     v_a_ms = np.where(df_a['speed'] < 10, 10, df_a['speed']) / 3.6
     v_b_ms = np.where(df_b['speed'] < 10, 10, df_b['speed']) / 3.6
     delta_time_array = np.cumsum((1 / v_b_ms) - (1 / v_a_ms)) * (5000/1000)
@@ -143,7 +140,7 @@ else:
     m4.metric("TRACK DIMENSION", "5.00 km")
     m5.metric("DATA SOURCE", "SIMULATION" if sim_mode else "LIVE API")
 
-    # Neon F1 Plots
+    # Plots
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
                         subplot_titles=("Cumulative Time Delta (s) [Up = A Faster]", "Speed Profile (km/h)", "Throttle Application (%)"),
                         vertical_spacing=0.07)
@@ -157,13 +154,38 @@ else:
     fig.update_layout(template="plotly_dark", height=850, paper_bgcolor="#0A0A0C", plot_bgcolor="#0A0A0C", hovermode="x unified")
     st.plotly_chart(fig, use_container_width=True)
 
-# --- 6. GUIDE ---
-with st.expander("📖 Comprehensive Telemetry Engineering Guide (Technical & Functional Manual)"):
-    t_col, f_col = st.columns(2)
-    with t_col:
-        st.write("### 💻 Technical Infrastructure")
-        st.write("F1 components stream telemetry metrics at asynchronous intervals (~3.7 Hz). Rather than plotting chronological arrays, this application maps datasets onto an integrated track coordinate structure using **Linear Spatial Interpolation (`np.interp`)**.")
-    with f_col:
-        st.write("### 🏁 Functional Analytics")
-        st.write("* **Time Delta:** Upward slope = Driver A is faster. Downward = Ref Driver is faster.")
-        st.write("* **Speed & Throttle:** Deep 'V' speed traces indicate heavy braking. Faster throttle application (earlier return to 100%) out of these zones highlights differences in car downforce and driver commitment.")
+# --- 6. SHORT & READABLE GUIDE ---
+with st.expander("🏎️ Quick Start & How to Read the Plots"):
+    st.markdown("""
+    **🛠️ How to Use the App**
+    1. **Configure Session:** Select the Year, Grand Prix, and Session (e.g., Qualifying or Race). 
+    2. **Select Drivers:** Pick **Driver A** and a **Reference Driver** to compare against.
+    3. **Handle API Drops (Simulation Mode):** F1 APIs occasionally block cloud servers. If the app shows an error or a flatline, check **Enable Simulation Mode** to view the dashboard using mathematically modeled F1 track data.
+
+    ---
+
+    **📈 How to Read the Plots**
+    We align the data over a **5.0 km distance axis** rather than time. This means you are comparing both cars at the exact same physical spot on the track.
+
+    * **⏱️ Cumulative Time Delta**
+      * **Line goes UP:** Driver A is driving faster and gaining time.
+      * **Line goes DOWN:** The Reference Driver is driving faster and clawing back time.
+    * **🏎️ Speed Profile**
+      * **The 'V' Shape:** This indicates a heavy braking zone. 
+      * **Braking Style:** If a driver's speed trace drops *later* than their rival's, they are "late braking" into the corner. The bottom of the 'V' is the minimum apex speed.
+    * **🔥 Throttle Application**
+      * **Corner Exits:** Look for the trace jumping back to 100%. The driver who hits full throttle earlier is getting better traction and carrying more speed down the next straight.
+
+    ---
+
+    **💻 The Tech Under the Hood: Spatial Normalization**
+    Raw telemetry from F1 sensors is messy. Because Driver A and Driver B complete a lap in different times, their data arrays don't match up. 
+    To fix this, the app uses **Spatial Normalization**. We take the asynchronous, time-based data and use linear interpolation (`np.interp`) to force both datasets onto an identical 1,000-point physical track map. This guarantees that "Turn 1" for Driver A perfectly aligns with "Turn 1" for Driver B, making the math behind the Time Delta 100% accurate.
+    
+    ---
+    
+    **🛡️ Data Governance & Compliance**
+    * **Data Lineage:** All telemetry is strictly sourced from the OpenF1 REST API (`api.openf1.org`).
+    * **Rate Limiting:** Network caching (via `@st.cache_data`) limits redundant outbound API requests, maintaining responsible consumption of the provider's infrastructure and preventing HTTP 429 bans.
+    * **Data Privacy:** This application exclusively queries vehicle physics and public athletic performance data. No Personally Identifiable Information (PII) is accessed, processed, or retained.
+    """)
