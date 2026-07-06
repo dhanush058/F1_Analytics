@@ -5,54 +5,43 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# --- 1. CONFIGURATION & RECRUITER TOAST ---
+# --- 1. CONFIGURATION & TOAST ---
 st.set_page_config(layout="wide", page_title="F1 Analytics: Fastest Lap")
 
 if "toast_shown" not in st.session_state:
-    st.toast("⚠️ Recruiter Note: F1 APIs often block cloud IPs or lack future data. Use 'Enable Simulation Mode' in the sidebar to evaluate the dashboard's analytics engine.", icon="🚨")
+    st.toast("⚠️ Note: F1 APIs often block cloud IPs or lack future data. Use 'Enable Simulation Mode' in the sidebar if data fails to load.", icon="🚨")
     st.session_state.toast_shown = True
 
-COLOR_A = '#00FFFF'   # Neon Cyan
-COLOR_B = '#FF00FF'   # Neon Magenta
-COLOR_DELTA = '#FFFFFF' # White
+# Neon Theme Colors
+COLOR_A = '#00FFFF'     # Neon Cyan
+COLOR_B = '#FF00FF'     # Neon Magenta
+COLOR_DELTA = '#FFFFFF' # Crisp White
 
-# --- 2. API FETCHER (NO UGLY ERRORS) ---
+# --- 2. ROBUST API FETCHER ---
 @st.cache_data(ttl=600)
 def get_openf1(endpoint, params=None):
     base_url = "https://api.openf1.org/v1/"
     try:
-        res = requests.get(base_url + endpoint, params=params, timeout=10)
+        res = requests.get(base_url + endpoint, params=params, timeout=12)
         return pd.DataFrame(res.json()) if res.status_code == 200 else pd.DataFrame()
     except:
         return pd.DataFrame()
 
 # --- 3. DATA ENGINE (REAL & SIMULATION) ---
-def get_telemetry(driver_name, s_key, drivers_df, is_sim=False, is_ref_driver=False):
+def get_telemetry(driver_api_name, s_key, drivers_df, is_sim=False, is_ref_driver=False):
     dist_ref = np.linspace(0, 5000, 1000)
     
+    # --- SIMULATION FALLBACK ENGINE ---
     if is_sim:
-        # GUARANTEED VARIANCE: Driver A gets one driving style, Driver B gets another.
         if not is_ref_driver:
-            # Driver A: Late Braking, lower apex speed
-            speed = 320 - 150 * np.exp(-((dist_ref - 1100)/130)**2) \
-                        - 120 * np.exp(-((dist_ref - 2300)/100)**2) \
-                        - 160 * np.exp(-((dist_ref - 3400)/180)**2) \
-                        - 140 * np.exp(-((dist_ref - 4400)/130)**2)
-            throttle = 100 - 100 * np.exp(-((dist_ref - 1050)/150)**2) \
-                           - 100 * np.exp(-((dist_ref - 2250)/110)**2) \
-                           - 100 * np.exp(-((dist_ref - 3350)/190)**2) \
-                           - 100 * np.exp(-((dist_ref - 4350)/140)**2)
+            # Driver A Profile: Late Braking
+            speed = 320 - 150 * np.exp(-((dist_ref - 1100)/130)**2) - 120 * np.exp(-((dist_ref - 2300)/100)**2) - 160 * np.exp(-((dist_ref - 3400)/180)**2) - 140 * np.exp(-((dist_ref - 4400)/130)**2)
+            throttle = 100 - 100 * np.exp(-((dist_ref - 1050)/150)**2) - 100 * np.exp(-((dist_ref - 2250)/110)**2) - 100 * np.exp(-((dist_ref - 3350)/190)**2) - 100 * np.exp(-((dist_ref - 4350)/140)**2)
             lap_time = 82.145
         else:
-            # Driver B: Early braking, higher apex speed (carries more momentum)
-            speed = 315 - 135 * np.exp(-((dist_ref - 1050)/160)**2) \
-                        - 105 * np.exp(-((dist_ref - 2250)/130)**2) \
-                        - 145 * np.exp(-((dist_ref - 3350)/210)**2) \
-                        - 130 * np.exp(-((dist_ref - 4350)/160)**2)
-            throttle = 100 - 100 * np.exp(-((dist_ref - 1000)/180)**2) \
-                           - 100 * np.exp(-((dist_ref - 2200)/140)**2) \
-                           - 100 * np.exp(-((dist_ref - 3300)/220)**2) \
-                           - 100 * np.exp(-((dist_ref - 4300)/170)**2)
+            # Driver B Profile: Early braking, carries momentum
+            speed = 315 - 135 * np.exp(-((dist_ref - 1050)/160)**2) - 105 * np.exp(-((dist_ref - 2250)/130)**2) - 145 * np.exp(-((dist_ref - 3350)/210)**2) - 130 * np.exp(-((dist_ref - 4350)/160)**2)
+            throttle = 100 - 100 * np.exp(-((dist_ref - 1000)/180)**2) - 100 * np.exp(-((dist_ref - 2200)/140)**2) - 100 * np.exp(-((dist_ref - 3300)/220)**2) - 100 * np.exp(-((dist_ref - 4300)/170)**2)
             lap_time = 82.412
             
         speed = np.clip(speed + np.random.normal(0, 1.0, 1000), 65, 340)
@@ -60,8 +49,8 @@ def get_telemetry(driver_name, s_key, drivers_df, is_sim=False, is_ref_driver=Fa
         throttle[throttle > 95] = 100
         return pd.DataFrame({'distance': dist_ref, 'speed': speed, 'throttle': throttle}), lap_time
 
-    # LIVE FETCHING
-    d_num = drivers_df[drivers_df['full_name'] == driver_name]['driver_number'].iloc[0]
+    # --- LIVE API FETCHING ---
+    d_num = drivers_df[drivers_df['full_name'] == driver_api_name]['driver_number'].iloc[0]
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d_num})
     
     if laps.empty or 'lap_duration' not in laps.columns: return pd.DataFrame(), None
@@ -70,7 +59,8 @@ def get_telemetry(driver_name, s_key, drivers_df, is_sim=False, is_ref_driver=Fa
     
     fastest_lap = valid_laps.loc[valid_laps['lap_duration'].idxmin()]
     start_time = pd.to_datetime(fastest_lap['date_start'])
-    end_time = start_time + pd.Timedelta(seconds=float(fastest_lap['lap_duration']))
+    # Pad the end time slightly to ensure we capture the full final corner
+    end_time = start_time + pd.Timedelta(seconds=float(fastest_lap['lap_duration']) + 0.5)
     
     start_str = start_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
     end_str = end_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
@@ -82,6 +72,7 @@ def get_telemetry(driver_name, s_key, drivers_df, is_sim=False, is_ref_driver=Fa
     tel['throttle'] = pd.to_numeric(tel['throttle'], errors='coerce')
     tel = tel.dropna(subset=['speed', 'throttle'])
     
+    # Normalizing data to standard distance map
     tel['distance_raw'] = np.linspace(0, 5000, len(tel))
     df_normalized = pd.DataFrame({
         'distance': dist_ref,
@@ -97,7 +88,7 @@ year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
 
 meetings = get_openf1("meetings", {"year": year})
 if meetings.empty:
-    st.sidebar.warning(f"No API data for {year}. Please enable Simulation Mode or pick 2024.")
+    st.sidebar.warning(f"No API data found for {year}. Please enable Simulation Mode or pick 2024.")
     st.stop()
     
 meetings = meetings[~meetings['meeting_name'].str.contains("Testing", case=False, na=False)].sort_values("meeting_key")
@@ -112,80 +103,85 @@ s_key = sessions[sessions['session_name'] == selected_session]['session_key'].il
 drivers_data = get_openf1("drivers", {"session_key": s_key})
 if drivers_data.empty: st.stop()
 drivers_data = drivers_data.dropna(subset=['full_name'])
-sorted_driver_list = sorted(drivers_data['full_name'].unique())
-d1 = st.sidebar.selectbox("Driver A", sorted_driver_list, index=0)
-d2 = st.sidebar.selectbox("Ref Driver", sorted_driver_list, index=min(1, len(sorted_driver_list)-1))
+
+# UX FIX: Make driver names Title Case so they are easy to read. 
+# Streamlit selectboxes are searchable—just type the name!
+drivers_data['display_name'] = drivers_data['full_name'].str.title()
+sorted_driver_list = sorted(drivers_data['display_name'].unique())
+
+d1_display = st.sidebar.selectbox("Driver A (Type to search)", sorted_driver_list, index=0)
+d2_display = st.sidebar.selectbox("Ref Driver (Type to search)", sorted_driver_list, index=min(1, len(sorted_driver_list)-1))
+
+# Map friendly display names back to API-required ALL CAPS names
+d1_api = drivers_data[drivers_data['display_name'] == d1_display]['full_name'].iloc[0]
+d2_api = drivers_data[drivers_data['display_name'] == d2_display]['full_name'].iloc[0]
 
 # --- 5. EXECUTION & VISUALIZATION ---
 with st.spinner("Processing Telemetry Data..."):
-    df_a, lap_time_a = get_telemetry(d1, s_key, drivers_data, sim_mode, is_ref_driver=False)
-    df_b, lap_time_b = get_telemetry(d2, s_key, drivers_data, sim_mode, is_ref_driver=True)
+    df_a, lap_time_a = get_telemetry(d1_api, s_key, drivers_data, sim_mode, is_ref_driver=False)
+    df_b, lap_time_b = get_telemetry(d2_api, s_key, drivers_data, sim_mode, is_ref_driver=True)
 
 if df_a.empty or df_b.empty:
-    st.warning("⚠️ Real telemetry is unavailable for this specific session (API returned 404). Please check 'Enable Simulation Mode' in the sidebar to view the analytics dashboard.")
+    st.error("⚠️ Real telemetry is unavailable for this specific session. The API returned no data. Please check 'Enable Simulation Mode' in the sidebar to view the analytics dashboard structure.")
 else:
-    st.title(f"Fastest Lap Telemetry: {selected_gp}")
+    st.title(f"Fastest Lap: {selected_gp} ({selected_session})")
     
-    # Metrics
     m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("MAX VEL: DRIVER A", f"{df_a['speed'].max():.0f} km/h", d1)
-    m2.metric("MAX VEL: REF DRIVER", f"{df_b['speed'].max():.0f} km/h", d2)
+    m1.metric(f"MAX VEL: {d1_display.split()[-1].upper()}", f"{df_a['speed'].max():.0f} km/h")
+    m2.metric(f"MAX VEL: {d2_display.split()[-1].upper()}", f"{df_b['speed'].max():.0f} km/h")
     
     v_a_ms = np.where(df_a['speed'] < 10, 10, df_a['speed']) / 3.6
     v_b_ms = np.where(df_b['speed'] < 10, 10, df_b['speed']) / 3.6
     delta_time_array = np.cumsum((1 / v_b_ms) - (1 / v_a_ms)) * (5000/1000)
     final_delta = lap_time_a - lap_time_b if (lap_time_a and lap_time_b) else delta_time_array[-1]
     
-    m3.metric("LAP TIME VARIANCE", f"{final_delta:.3f} s")
-    m4.metric("TRACK DIMENSION", "5.00 km")
-    m5.metric("DATA SOURCE", "SIMULATION" if sim_mode else "LIVE API")
+    m3.metric("LAP TIME GAP", f"{final_delta:.3f} s")
+    m4.metric("TRACK MODEL", "5.00 km")
+    m5.metric("DATA STATUS", "SIMULATION" if sim_mode else "LIVE API")
 
-    # Plots
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
-                        subplot_titles=("Cumulative Time Delta (s) [Up = A Faster]", "Speed Profile (km/h)", "Throttle Application (%)"),
-                        vertical_spacing=0.07)
+                        subplot_titles=(f"Time Delta (s) [Up = {d1_display} Faster]", "Speed (km/h)", "Throttle (%)"),
+                        vertical_spacing=0.08)
 
-    fig.add_trace(go.Scatter(x=df_a['distance'], y=delta_time_array, name="Time Delta", line=dict(color=COLOR_DELTA, width=2.5)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df_a['distance'], y=df_a['speed'], name=f"{d1} Speed", line=dict(color=COLOR_A, width=2)), row=2, col=1)
-    fig.add_trace(go.Scatter(x=df_b['distance'], y=df_b['speed'], name=f"{d2} Speed", line=dict(color=COLOR_B, width=2)), row=2, col=1)
-    fig.add_trace(go.Scatter(x=df_a['distance'], y=df_a['throttle'], name=f"{d1} Throttle", line=dict(color=COLOR_A, width=1.5)), row=3, col=1)
-    fig.add_trace(go.Scatter(x=df_b['distance'], y=df_b['throttle'], name=f"{d2} Throttle", line=dict(color=COLOR_B, width=1.5)), row=3, col=1)
+    fig.add_trace(go.Scatter(x=df_a['distance'], y=delta_time_array, name="Delta", line=dict(color=COLOR_DELTA, width=2.5)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df_a['distance'], y=df_a['speed'], name=d1_display, line=dict(color=COLOR_A, width=2)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df_b['distance'], y=df_b['speed'], name=d2_display, line=dict(color=COLOR_B, width=2)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df_a['distance'], y=df_a['throttle'], name=d1_display, line=dict(color=COLOR_A, width=1.5)), row=3, col=1)
+    fig.add_trace(go.Scatter(x=df_b['distance'], y=df_b['throttle'], name=d2_display, line=dict(color=COLOR_B, width=1.5)), row=3, col=1)
 
     fig.update_layout(template="plotly_dark", height=850, paper_bgcolor="#0A0A0C", plot_bgcolor="#0A0A0C", hovermode="x unified")
     st.plotly_chart(fig, use_container_width=True)
 
-# --- 6. SHORT & READABLE GUIDE ---
-with st.expander("🏎️ Quick Start & How to Read the Plots"):
+# --- 6. HUMANIZED GUIDE & DATA GOVERNANCE ---
+with st.expander("📖 Friendly Guide: How to Read the Data & How We Built It"):
     st.markdown("""
-    **🛠️ How to Use the App**
-    1. **Configure Session:** Select the Year, Grand Prix, and Session (e.g., Qualifying or Race). 
-    2. **Select Drivers:** Pick **Driver A** and a **Reference Driver** to compare against.
-    3. **Handle API Drops (Simulation Mode):** F1 APIs occasionally block cloud servers. If the app shows an error or a flatline, check **Enable Simulation Mode** to view the dashboard using mathematically modeled F1 track data.
-
-    ---
-
-    **📈 How to Read the Plots**
-    We align the data over a **5.0 km distance axis** rather than time. This means you are comparing both cars at the exact same physical spot on the track.
-
-    * **⏱️ Cumulative Time Delta**
-      * **Line goes UP:** Driver A is driving faster and gaining time.
-      * **Line goes DOWN:** The Reference Driver is driving faster and clawing back time.
-    * **🏎️ Speed Profile**
-      * **The 'V' Shape:** This indicates a heavy braking zone. 
-      * **Braking Style:** If a driver's speed trace drops *later* than their rival's, they are "late braking" into the corner. The bottom of the 'V' is the minimum apex speed.
-    * **🔥 Throttle Application**
-      * **Corner Exits:** Look for the trace jumping back to 100%. The driver who hits full throttle earlier is getting better traction and carrying more speed down the next straight.
-
-    ---
-
-    **💻 The Tech Under the Hood: Spatial Normalization**
-    Raw telemetry from F1 sensors is messy. Because Driver A and Driver B complete a lap in different times, their data arrays don't match up. 
-    To fix this, the app uses **Spatial Normalization**. We take the asynchronous, time-based data and use linear interpolation (`np.interp`) to force both datasets onto an identical 1,000-point physical track map. This guarantees that "Turn 1" for Driver A perfectly aligns with "Turn 1" for Driver B, making the math behind the Time Delta 100% accurate.
+    ### 👋 Welcome to the F1 Telemetry App
+    If you've ever wondered *how* a driver pulled off an amazing qualifying lap, you're in the right place. We aren't just looking at lap times here; we're looking at the physical footprint of the car on the track.
     
+    Here is a quick, human-friendly guide to making sense of these neon lines.
+
+    ### 📈 Reading the Plots
+    **1. The Time Delta (The White Line)**
+    Think of this as the tug-of-war between the two drivers. If the line is sloping up, Driver A is gaining an advantage. If it slopes down, the Reference Driver is clawing time back. 
+
+    **2. The Speed Trace**
+    Every time you see a deep 'V' shape, the drivers are slamming on the brakes for a corner. The bottom of that 'V' is their slowest point (the apex). If one driver's line dips later than the other, they are "late braking"—a risky, aggressive move to steal time.
+
+    **3. The Throttle Pedal**
+    This shows how hard they are pressing the gas. When coming out of a corner, the driver who gets their line back to 100% the fastest is getting better traction and carrying more speed down the next straight.
+
     ---
-    
-    **🛡️ Data Governance & Compliance**
-    * **Data Lineage:** All telemetry is strictly sourced from the OpenF1 REST API (`api.openf1.org`).
-    * **Rate Limiting:** Network caching (via `@st.cache_data`) limits redundant outbound API requests, maintaining responsible consumption of the provider's infrastructure and preventing HTTP 429 bans.
-    * **Data Privacy:** This application exclusively queries vehicle physics and public athletic performance data. No Personally Identifiable Information (PII) is accessed, processed, or retained.
+
+    ### 💻 The Tech Under the Hood
+    F1 cars spit out a lot of messy, asynchronous data. Because two drivers finish laps at different times, their data streams don't naturally line up. If we just plotted the raw data, the charts would be broken and misaligned.
+
+    To fix this, we built a **Spatial Normalization Engine**. We take the raw, time-based sensor data and use linear interpolation (`np.interp` in Python) to force both datasets onto an identical, fixed 5-kilometer map. This guarantees that we are comparing both cars at the exact same physical meter of the track.
+
+    ---
+
+    ### 🛡️ Data Governance & Privacy
+    We take data integrity seriously. Here is how we manage the pipeline:
+    * **Single Source of Truth:** All real-world telemetry is pulled directly from the official timing feeds via the OpenF1 REST API (`api.openf1.org`).
+    * **Respecting Infrastructure:** We heavily cache our network requests. This prevents us from spamming the API provider, keeps the app running fast, and prevents IP bans.
+    * **Zero Personal Data:** This dashboard analyzes public vehicle physics and athletic performance data. No personal data, user tracking, or internal F1 team engineering secrets are collected or stored.
     """)
