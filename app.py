@@ -8,7 +8,6 @@ from plotly.subplots import make_subplots
 # --- 1. CONFIGURATION & PIT-WALL CARBON THEME ---
 st.set_page_config(layout="wide", page_title="F1 Analytics: Pit-Wall")
 
-# Inject Custom CSS for F1 Carbon Fiber & Racing Red Aesthetic
 st.markdown("""
 <style>
     /* Main Backgrounds */
@@ -19,13 +18,13 @@ st.markdown("""
     [data-testid="stMetric"] {
         background-color: #15151C !important;
         border: 1px solid #2A2A35 !important;
-        border-top: 4px solid #FF1801 !important; /* F1 Signature Red */
+        border-top: 4px solid #FF1801 !important;
         border-radius: 4px !important;
         padding: 10px 15px !important;
         box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
     
-    /* Metric Typography Fixes (Shrunk, scannable, non-enlarged) */
+    /* Metric Typography Fixes */
     [data-testid="stMetricLabel"] { 
         color: #8E8E9F !important; 
         font-family: 'Courier New', monospace !important; 
@@ -52,14 +51,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if "toast_shown" not in st.session_state:
-    st.toast("🚨 Pit-Wall Active. If live data is blocked by server proxies, enable 'Simulation Mode' for distinct driver telemetry profiles.", icon="🏎️")
+    st.toast("🚨 Pit-Wall Active. If 2026 data is pending or live APIs are blocked, enable 'Simulation Mode'.", icon="🏎️")
     st.session_state.toast_shown = True
 
-# F1 Pit-Wall Colors
-COLOR_A = '#00FFFF'     # Neon Cyan
-COLOR_B = '#FF00FF'     # Neon Magenta
-COLOR_DELTA = '#00FF00' # Neon Green
-COLOR_BG = '#0B0B0E'    # Dark Paddock Black
+COLOR_A = '#00FFFF'     
+COLOR_B = '#FF00FF'     
+COLOR_DELTA = '#00FF00' 
+COLOR_BG = '#0B0B0E'    
 
 # --- 2. ROBUST API FETCHER ---
 @st.cache_data(ttl=600)
@@ -75,36 +73,41 @@ def get_openf1(endpoint, params=None):
 def get_telemetry(driver_api_name, s_key, drivers_df, is_sim=False, driver_id=1):
     dist_ref = np.linspace(0, 5000, 1000)
     
-    # --- SIMULATION MODE WITH SECURED UNIQUE DRIVER VARIANCE ---
     if is_sim:
-        # Generate a seed bound securely to this specific driver's identity string
-        driver_seed = sum(ord(c) for c in driver_api_name) + (driver_id * 500)
+        # Create a completely unique seed per driver
+        driver_seed = sum(ord(c) for c in driver_api_name) * (driver_id + 7)
         np.random.seed(driver_seed)
         
-        # Unique driving signature modifiers
-        brake_modifier = (driver_seed % 60) - 30   # Shifts braking up to +/- 30m
-        apex_modifier = (driver_seed % 20)          # Adjusts minimum apex speed by up to 20 km/h
-        accel_modifier = 1.0 + ((driver_seed % 10) / 100.0) # Modulates exit acceleration response
+        # 1. DYNAMIC VMAX: Top speed is now uniquely calculated per driver (between 320 and 345 km/h)
+        vmax = 320 + (driver_seed % 25)
         
-        # Multi-Apex Track Model mapping spatial track traits uniquely per driver
-        speed = 335 - (155 - apex_modifier) * np.exp(-((dist_ref - 1150 + brake_modifier)/130)**2) \
-                    - (125 - apex_modifier) * np.exp(-((dist_ref - 2700 + brake_modifier)/105)**2) \
-                    - (165 - apex_modifier) * np.exp(-((dist_ref - 4150 + brake_modifier)/160)**2)
+        # 2. UNIQUE BRAKING DYNAMICS
+        brake_shift = (driver_seed % 80) - 40   # Shifts braking zones up to +/- 40 meters
+        apex_drop_1 = 140 - (driver_seed % 25)  # Unique apex speed for Turn 1
+        apex_drop_2 = 120 - ((driver_seed // 2) % 20) # Unique apex speed for Turn 2
+        apex_drop_3 = 160 - ((driver_seed // 3) % 30) # Unique apex speed for Turn 3
         
-        throttle = 100 - 100 * np.exp(-((dist_ref - 1120 + brake_modifier)/(150 * accel_modifier))**2) \
-                       - 100 * np.exp(-((dist_ref - 2650 + brake_modifier)/(125 * accel_modifier))**2) \
-                       - 100 * np.exp(-((dist_ref - 4080 + brake_modifier)/(185 * accel_modifier))**2)
+        # Apply unique physics to the speed trace
+        speed = vmax - apex_drop_1 * np.exp(-((dist_ref - 1150 + brake_shift)/130)**2) \
+                     - apex_drop_2 * np.exp(-((dist_ref - 2700 + brake_shift)/105)**2) \
+                     - apex_drop_3 * np.exp(-((dist_ref - 4150 + brake_shift)/160)**2)
         
-        lap_time = 79.5 + (driver_seed % 400) / 133.0
+        # Apply unique throttle application
+        throttle = 100 - 100 * np.exp(-((dist_ref - 1120 + brake_shift)/150)**2) \
+                       - 100 * np.exp(-((dist_ref - 2650 + brake_shift)/125)**2) \
+                       - 100 * np.exp(-((dist_ref - 4080 + brake_shift)/185)**2)
         
-        # Synthetic high-frequency micro-jitter
-        speed = np.clip(speed + np.random.normal(0, 0.7, 1000), 62, 342)
+        # Unique lap times
+        lap_time = 78.5 + (driver_seed % 500) / 100.0
+        
+        # Add micro-jitter for realism, but DO NOT hard-clip the top speed
+        speed = speed + np.random.normal(0, 0.6, 1000)
         throttle = np.clip(throttle + np.random.normal(0, 1.1, 1000), 0, 100)
-        throttle[throttle > 94] = 100 
+        throttle[throttle > 93] = 100 
         
         return pd.DataFrame({'distance': dist_ref, 'speed': speed, 'throttle': throttle}), lap_time
 
-    # --- LIVE API STREAM FLOW ---
+    # LIVE API STREAM FLOW
     d_num = drivers_df[drivers_df['full_name'] == driver_api_name]['driver_number'].iloc[0]
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d_num})
     
@@ -141,7 +144,7 @@ year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
 
 meetings = get_openf1("meetings", {"year": year})
 if meetings.empty:
-    st.sidebar.warning(f"No Live API data map for {year}. Toggle Simulation Mode or select 2024.")
+    st.sidebar.warning(f"No Live API data map for {year}. Toggle Simulation Mode or select an older year.")
     st.stop()
     
 meetings = meetings[~meetings['meeting_name'].str.contains("Testing", case=False, na=False)].sort_values("meeting_key")
@@ -157,7 +160,6 @@ drivers_data = get_openf1("drivers", {"session_key": s_key})
 if drivers_data.empty: st.stop()
 drivers_data = drivers_data.dropna(subset=['full_name'])
 
-# Normalize and format drivers list to Title Case
 drivers_data['display_name'] = drivers_data['full_name'].str.title()
 sorted_driver_list = sorted(drivers_data['display_name'].unique())
 
@@ -169,7 +171,6 @@ d2_api = drivers_data[drivers_data['display_name'] == d2_display]['full_name'].i
 
 # --- 5. COMPUTE ENGINE ---
 with st.spinner("Analyzing Lap Metrics..."):
-    # Feeding unique driver ids ensures that Driver A and Driver B never map identically
     df_a, lap_time_a = get_telemetry(d1_api, s_key, drivers_data, sim_mode, driver_id=1)
     df_b, lap_time_b = get_telemetry(d2_api, s_key, drivers_data, sim_mode, driver_id=2)
 
@@ -179,12 +180,10 @@ if df_a.empty or df_b.empty:
 else:
     st.title(f"Fastest Lap: {selected_gp} — {selected_session}")
     
-    # Grid Layout of 5 Carbon-Themed Telemetry Cards
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric(label=f"VMAX — {d1_display.split()[-1].upper()}", value=f"{df_a['speed'].max():.0f} KM/H")
     m2.metric(label=f"VMAX — {d2_display.split()[-1].upper()}", value=f"{df_b['speed'].max():.0f} KM/H")
     
-    # Differential Integration Math
     v_a_ms = np.where(df_a['speed'] < 10, 10, df_a['speed']) / 3.6
     v_b_ms = np.where(df_b['speed'] < 10, 10, df_b['speed']) / 3.6
     delta_time_array = np.cumsum((1 / v_b_ms) - (1 / v_a_ms)) * (5000/1000)
@@ -194,17 +193,13 @@ else:
     m4.metric(label="TRACK DIMENSION", value="5.00 KM")
     m5.metric(label="DATA PIPELINE", value="SIMULATION" if sim_mode else "LIVE API")
 
-    # Chart Processing Space
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
                         subplot_titles=(f"Time Delta (s) [Up = {d1_display} Gaining]", "Speed Trace (km/h)", "Throttle Trace (%)"),
                         vertical_spacing=0.08)
 
-    # Neon Green Trace Assigned to Core Delta
     fig.add_trace(go.Scatter(x=df_a['distance'], y=delta_time_array, name="Delta", line=dict(color=COLOR_DELTA, width=2.5)), row=1, col=1)
-    
     fig.add_trace(go.Scatter(x=df_a['distance'], y=df_a['speed'], name=d1_display, line=dict(color=COLOR_A, width=2)), row=2, col=1)
     fig.add_trace(go.Scatter(x=df_b['distance'], y=df_b['speed'], name=d2_display, line=dict(color=COLOR_B, width=2)), row=2, col=1)
-    
     fig.add_trace(go.Scatter(x=df_a['distance'], y=df_a['throttle'], name=d1_display, line=dict(color=COLOR_A, width=1.5), showlegend=False), row=3, col=1)
     fig.add_trace(go.Scatter(x=df_b['distance'], y=df_b['throttle'], name=d2_display, line=dict(color=COLOR_B, width=1.5), showlegend=False), row=3, col=1)
 
@@ -239,7 +234,7 @@ with st.expander("📖 PIT-WALL TELEMETRY & DATA GOVERNANCE STANDARD"):
     ---
 
     ### 🛡️ Data Governance & Transparency Framework
-    * **Data Origin Matrix:** Real-world metrics trace explicitly back to primary timing infrastructure via the OpenF1 Open Source Endpoint Framework (`api.openf1.org`).
-    * **Synthetic Data Transparency & Purpose:** API clusters regularly execute protocol lockouts on public hosting servers or encounter historical gaps. To guarantee application validation in live staging, a deterministic simulation matrix maps distinct driver signatures based on name hashes. This status is permanently logged inside the **Data Pipeline Status Card** to ensure absolute data auditing transparency.
-    * **Infrastructure Stewardship:** Aggressive caching policies protect structural overhead from repetitive request loops, preserving upstream integrity and eliminating data throttling.
+    * **Data Origin Matrix:** Real-world metrics trace explicitly back to primary timing infrastructure via the OpenF1 API (`api.openf1.org`).
+    * **Why Use Simulation Data?** As of 2026, live telemetry for specific future races on the current calendar may not yet exist in the OpenF1 database. Furthermore, cloud deployment platforms (like Streamlit Community Cloud) frequently face rate-limiting or HTTP 403 blocks from external sports APIs. 
+    * **Synthetic Transparency:** When live queries drop or 2026 data is pending, the app triggers a deterministic, mathematically seeded simulation engine to ensure the UI and analytical structures remain fully auditable. We explicitly declare this state in the top-right **Data Pipeline Status Card** so users never confuse synthetic testing physics with live engineering data.
     """)
