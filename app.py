@@ -5,176 +5,93 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# --- 1. CONFIGURATION & NOTIFICATIONS ---
-st.set_page_config(layout="wide", page_title="F1 Analytics: Fastest Lap")
+# --- CONFIGURATION ---
+st.set_page_config(layout="wide", page_title="F1 Fastest Lap Analysis")
 
-# Top-Middle Pop-up Notification for Recruiter
-if "toast_shown" not in st.session_state:
-    st.toast("⚠️ Recruiter Note: F1's API frequently blocks cloud IPs (DataNotLoadedError). Use the 'Simulation Mode' toggle in the right panel to test the dashboard's data processing logic and visualization capabilities if real data drops.", icon="🚨")
-    st.session_state.toast_shown = True
+# Top-Middle Notification for Recruiter
+st.toast("🚨 Note: Live API data may be blocked by hosting providers. Enable 'Simulation Mode' to view telemetry profiles.", icon="⚠️")
 
-# --- 2. API HELPER ---
+# --- API HELPERS ---
 @st.cache_data(ttl=3600)
-def get_openf1(endpoint, params):
+def fetch_data(endpoint, params=None):
     base_url = "https://api.openf1.org/v1/"
     try:
-        res = requests.get(base_url + endpoint, params=params, timeout=12)
+        res = requests.get(base_url + endpoint, params=params, timeout=10)
         return pd.DataFrame(res.json()) if res.status_code == 200 else pd.DataFrame()
-    except Exception: 
-        return pd.DataFrame()
+    except: return pd.DataFrame()
 
-# --- 3. SIDEBAR CONFIGURATION (Right Panel Concept) ---
-st.sidebar.title("🏎️ Session Config")
-st.sidebar.info("Toggle Simulation Mode if live API data is blocked by host.")
-sim_mode = st.sidebar.checkbox("Simulation Mode", value=False)
+# --- SIDEBAR: CONFIGURATION ---
+st.sidebar.title("Configuration")
+sim_mode = st.sidebar.checkbox("Enable Simulation Mode", value=False)
 
-year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
+# Select GP and Session
+meetings = fetch_data("meetings", {"year": 2026})
+selected_gp = st.sidebar.selectbox("Grand Prix", meetings['meeting_name'].unique())
+m_key = meetings[meetings['meeting_name'] == selected_gp]['meeting_key'].iloc[0]
 
-# Meetings (Filtering out Pre-Season Testing & Ordering chronologically)
-meetings = get_openf1("meetings", {"year": year})
-if not meetings.empty:
-    # Filter testing and ensure chronological order based on meeting key
-    meetings = meetings[~meetings['meeting_name'].str.contains("Testing", case=False, na=False)]
-    meetings = meetings.sort_values(by="meeting_key")
-    
-    selected_gp = st.sidebar.selectbox("Grand Prix", meetings['meeting_name'].unique())
-    m_key = meetings[meetings['meeting_name'] == selected_gp]['meeting_key'].iloc[0]
-else:
-    st.error("API error: Could not fetch meetings.")
-    st.stop()
+sessions = fetch_data("sessions", {"meeting_key": m_key})
+selected_session = st.sidebar.selectbox("Session", sessions['session_name'].unique())
+s_key = sessions[sessions['session_name'] == selected_session]['session_key'].iloc[0]
 
-# Sessions
-sessions = get_openf1("sessions", {"meeting_key": m_key})
-if not sessions.empty:
-    selected_session = st.sidebar.selectbox("Session", sessions['session_name'].unique())
-    s_key = sessions[sessions['session_name'] == selected_session]['session_key'].iloc[0]
-else:
-    st.error("API error: Could not fetch sessions.")
-    st.stop()
+# Select Drivers
+drivers = fetch_data("drivers", {"session_key": s_key})
+d1 = st.sidebar.selectbox("Driver A", drivers['full_name'].unique())
+d2 = st.sidebar.selectbox("Ref Driver", drivers['full_name'].unique())
 
-# Drivers
-drivers = get_openf1("drivers", {"session_key": s_key})
-if not drivers.empty:
-    drivers = drivers.dropna(subset=['full_name'])
-    driver_names = drivers['full_name'].unique()
-    d1 = st.sidebar.selectbox("Driver A", driver_names, index=0)
-    d2 = st.sidebar.selectbox("Ref Driver", driver_names, index=min(1, len(driver_names)-1))
-else:
-    st.error("API error: Could not fetch drivers.")
-    st.stop()
-
-# --- 4. TELEMETRY & LAP LOGIC ---
-def get_fastest_lap_telemetry(driver_name, s_key, gp_name, session_name):
-    # SIMULATION MODE: Generates unique, accurate-looking curves for each driver/track combination
+# --- DATA PROCESSING ENGINE ---
+def get_fastest_lap_telemetry(driver_name, s_key):
     if sim_mode:
-        seed_string = f"{driver_name}_{gp_name}_{session_name}"
-        seed = sum(ord(c) for c in seed_string)
-        np.random.seed(seed)
-        
-        distance = np.linspace(0, 5000, 800)
-        # Create a unique track profile
-        base_speed = 200 + 40 * np.sin(distance / 300) + 50 * np.cos(distance / 150 + seed)
-        speed = np.clip(base_speed + np.random.normal(0, 3, 800), 70, 345)
-        
-        # Throttle tied to speed acceleration zones
-        throttle = np.clip(((speed - 80) / 265) * 100 + np.random.normal(0, 8, 800), 0, 100)
-        throttle = np.where(throttle > 88, 100, throttle) # Simulating full throttle
-        
-        mock_lap_time = 85.0 + np.random.uniform(-1.5, 1.5)
-        return pd.DataFrame({'distance': distance, 'speed': speed, 'throttle': throttle}), mock_lap_time
-
-    # LIVE API MODE: Specific Fastest Lap Retrieval
+        # Generate stable mock data for demonstration
+        dist = np.linspace(0, 5000, 500)
+        return pd.DataFrame({'distance': dist, 'speed': 250 + 50*np.sin(dist/200), 'throttle': 50 + 50*np.sin(dist/500)}), 85.0
+    
     d_num = drivers[drivers['full_name'] == driver_name]['driver_number'].iloc[0]
-    laps = get_openf1("laps", {"session_key": s_key, "driver_number": d_num})
     
-    if laps.empty or 'lap_duration' not in laps.columns:
-        return pd.DataFrame(), None
-        
-    # Find shortest lap
-    laps['lap_duration'] = pd.to_numeric(laps['lap_duration'], errors='coerce')
-    valid_laps = laps.dropna(subset=['lap_duration'])
-    if valid_laps.empty: return pd.DataFrame(), None
-        
-    fastest = valid_laps.loc[valid_laps['lap_duration'].idxmin()]
-    start_time = pd.to_datetime(fastest['date_start'])
-    end_time = start_time + pd.Timedelta(seconds=fastest['lap_duration'])
+    # 1. Get Fastest Lap
+    laps = fetch_data("laps", {"session_key": s_key, "driver_number": d_num})
+    if laps.empty: return pd.DataFrame(), None
+    fastest = laps.loc[laps['lap_duration'].idxmin()]
     
-    # Query car data strictly within the boundaries of the fastest lap
-    car_data = get_openf1("car_data", {
-        "session_key": s_key, 
-        "driver_number": d_num, 
-        "date>=": start_time.isoformat(), 
-        "date<=": end_time.isoformat()
-    })
+    # 2. Query Telemetry within lap time boundaries
+    start = fastest['date_start']
+    end = pd.to_datetime(start) + pd.Timedelta(seconds=fastest['lap_duration'])
     
-    if car_data.empty: return pd.DataFrame(), fastest['lap_duration']
-        
-    # Process Telemetry
-    car_data['speed'] = pd.to_numeric(car_data['speed'], errors='coerce')
-    car_data['throttle'] = pd.to_numeric(car_data['throttle'], errors='coerce')
-    car_data = car_data.dropna(subset=['speed', 'throttle'])
+    tel = fetch_data("car_data", {"session_key": s_key, "driver_number": d_num, "date>=": start, "date<=": end.isoformat()})
+    if tel.empty: return pd.DataFrame(), fastest['lap_duration']
     
-    if not car_data.empty:
-        car_data['distance'] = np.linspace(0, 5000, len(car_data)) # Normalize for plotting
-        
-    return car_data, fastest['lap_duration']
+    # Normalize for plotting
+    tel['distance'] = np.linspace(0, 5000, len(tel))
+    return tel, fastest['lap_duration']
 
-with st.spinner("Analyzing fastest laps..."):
-    df_a, lap_time_a = get_fastest_lap_telemetry(d1, s_key, selected_gp, selected_session)
-    df_b, lap_time_b = get_fastest_lap_telemetry(d2, s_key, selected_gp, selected_session)
+# Fetch
+df_a, lap_a = get_fastest_lap_telemetry(d1, s_key)
+df_b, lap_b = get_fastest_lap_telemetry(d2, s_key)
 
-# --- 5. DASHBOARD & PLOTTING ---
+# --- VISUALIZATION ---
 if not df_a.empty and not df_b.empty:
     st.title(f"Fastest Lap Analysis: {selected_gp}")
     
-    # 5 Metric Cards (3 Quant, 2 Qual/Info)
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("MAX VEL", f"{df_a['speed'].max():.0f} km/h", d1)
-    c2.metric("MAX VEL", f"{df_b['speed'].max():.0f} km/h", d2)
-    
-    # Calculate Max Spatial Gap (Time Delta Peak)
-    x_len = min(len(df_a), len(df_b))
-    dist = df_a['distance'].iloc[:x_len].values
-    s_a = np.where(df_a['speed'].iloc[:x_len].values < 1, 1, df_a['speed'].iloc[:x_len].values) / 3.6 # m/s
-    s_b = np.where(df_b['speed'].iloc[:x_len].values < 1, 1, df_b['speed'].iloc[:x_len].values) / 3.6 # m/s
-    
-    # Mathematical integration to find delta time over distance
-    d_dist = dist[1] - dist[0] if len(dist) > 1 else 1
-    t_a = np.cumsum(d_dist / s_a)
-    t_b = np.cumsum(d_dist / s_b)
-    delta_time = t_b - t_a
-    
-    max_gap = np.max(np.abs(delta_time))
-    c3.metric("MAX SPATIAL GAP", f"{max_gap:.3f} s")
-    c4.metric("TRACK LEN", "~5.0 km", selected_gp)
-    c5.metric("FASTEST LAP", f"{lap_time_a:.3f}s" if lap_time_a else "N/A", d1)
+    # Metrics
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Max Speed A", f"{df_a['speed'].max():.0f} km/h")
+    c2.metric("Max Speed B", f"{df_b['speed'].max():.0f} km/h")
+    c3.metric("Lap Time A", f"{lap_a:.3f} s")
+    c4.metric("Lap Time B", f"{lap_b:.3f} s")
 
-    # Plots (Neon F1 Theme)
-    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
-                        subplot_titles=("Time Delta (s) [Ref - Driver A]", "Speed (km/h)", "Throttle (%)"),
-                        vertical_spacing=0.06)
+    # Plot
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, subplot_titles=("Time Delta", "Speed (km/h)", "Throttle (%)"))
     
-    # Row 1: Delta
-    fig.add_trace(go.Scatter(x=dist, y=delta_time, name="Delta (s)", line=dict(color='white')), row=1, col=1)
+    # Delta (interpolation required for matching distance arrays)
+    delta = np.interp(df_a['distance'], df_b['distance'], df_b['speed']) - df_a['speed']
+    fig.add_trace(go.Scatter(x=df_a['distance'], y=delta, name="Delta"), row=1, col=1)
     
-    # Row 2: Speed
-    fig.add_trace(go.Scatter(x=dist, y=s_a * 3.6, name=d1, line=dict(color='#00FFFF')), row=2, col=1)
-    fig.add_trace(go.Scatter(x=dist, y=s_b * 3.6, name=d2, line=dict(color='#FF00FF')), row=2, col=1)
+    # Speed & Throttle
+    fig.add_trace(go.Scatter(x=df_a['distance'], y=df_a['speed'], name=d1), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df_b['distance'], y=df_b['speed'], name=d2), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df_a['distance'], y=df_a['throttle'], name=d1), row=3, col=1)
+    fig.add_trace(go.Scatter(x=df_b['distance'], y=df_b['throttle'], name=d2), row=3, col=1)
     
-    # Row 3: Throttle (Norris lines will clearly show now due to proper interpolation length)
-    fig.add_trace(go.Scatter(x=dist, y=df_a['throttle'].iloc[:x_len], name=d1, line=dict(color='#00FFFF'), showlegend=False), row=3, col=1)
-    fig.add_trace(go.Scatter(x=dist, y=df_b['throttle'].iloc[:x_len], name=d2, line=dict(color='#FF00FF'), showlegend=False), row=3, col=1)
-
-    fig.update_layout(template="plotly_dark", height=900, paper_bgcolor="#050505", plot_bgcolor="#050505", hovermode="x unified")
+    fig.update_layout(template="plotly_dark", height=800)
     st.plotly_chart(fig, use_container_width=True)
-
 else:
-    st.error("Incomplete lap telemetry for this combination. Please enable 'Simulation Mode' in the sidebar.")
-
-# --- 6. GUIDE ---
-with st.expander("📖 Telemetry Guide & Methodology"):
-    st.write("""
-    * **Time Delta Plot:** Calculates the cumulative time difference through mathematical integration of speed over distance. A climbing line means Driver A is gaining time.
-    * **Throttle Execution:** Identifies exactly when a driver transitions from braking to throttle. A steeper throttle curve indicates higher confidence and grip on corner exit.
-    * **Braking Zones:** Sharp, immediate drops in the speed trace indicate heavy braking. The bottom of the 'V' shape is the corner apex speed.
-    """)
+    st.warning("Telemetry data not found for these drivers in this session.")
