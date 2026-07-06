@@ -39,6 +39,12 @@ st.markdown("""
         font-weight: 800 !important; 
     }
     
+    /* Let Streamlit natively handle the Green/Red Delta Arrows, just enforce font */
+    [data-testid="stMetricDelta"] {
+        font-family: 'Courier New', monospace !important; 
+        font-weight: bold !important;
+    }
+    
     /* Global Typography */
     h1, h2, h3, h4 { 
         font-family: 'Courier New', monospace !important; 
@@ -71,27 +77,22 @@ def get_openf1(endpoint, params=None):
 # --- 3. DATA ENGINE (REAL LIVE DATA & ADVANCED DYNAMIC PHYSICS SIM) ---
 def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, is_sim=False, driver_id=1):
     if is_sim:
-        # Generate Hashes for Track, Session, and Driver
         track_hash = sum(ord(c) for c in track_name)
         session_hash = sum(ord(c) for c in session_name)
         driver_hash = sum(ord(c) for c in driver_api_name) * (driver_id + 7)
         
-        # 1. GENERATE THE TRACK LAYOUT 
         np.random.seed(track_hash + session_hash)
         
-        # Dynamically calculate track length between 4.2 KM and 7.0 KM
         track_length = 4200.0 + (track_hash % 2800)
         dist_ref = np.linspace(0, track_length, 1000)
         
         base_vmax = 290.0 + (track_hash % 55) 
         num_corners = 4 + (track_hash % 6)    
         
-        # Scale corners to fit the generated track length
         corner_indices = sorted(np.random.choice(range(100, 950), num_corners, replace=False))
         base_apexes = [90 + np.random.randint(0, 110) for _ in range(num_corners)]
-        base_lap_time = (track_length / 1000) * 15.0 # Roughly 15s per KM
+        base_lap_time = (track_length / 1000) * 15.0 
         
-        # 2. GENERATE DRIVER PHYSICS
         np.random.seed(driver_hash + track_hash + session_hash)
         vmax_cap = base_vmax + (driver_hash % 6) - 3 
         
@@ -106,7 +107,6 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
             
             brake_start = max(0, c_idx - brake_len)
             
-            # Threshold Braking Phase (Cubic Drop)
             for i in range(brake_start, c_idx):
                 progress = (i - brake_start) / brake_len
                 speed[i] = vmax_cap - (vmax_cap - v_apex) * (progress ** 3) 
@@ -115,19 +115,16 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
             speed[c_idx] = v_apex
             throttle[c_idx] = 0
             
-            # Corner Exit Phase (Concave Acceleration)
             accel_end = min(1000, c_idx + accel_len)
             for i in range(c_idx + 1, accel_end):
                 progress = (i - c_idx) / accel_len
                 speed[i] = v_apex + (vmax_cap - v_apex) * np.sqrt(progress) 
                 throttle[i] = min(100, progress * 450) 
                 
-        # Spatial Shifting
         shift = (driver_hash % 12) - 6
         speed = np.roll(speed, shift)
         throttle = np.roll(throttle, shift)
         
-        # Noise & Inertia
         speed = pd.Series(speed).rolling(window=4, min_periods=1).mean().values
         speed += np.random.normal(0, 0.9, 1000)
         throttle += np.random.normal(0, 1.3, 1000)
@@ -136,7 +133,6 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
         lap_time = base_lap_time + (driver_hash % 400) / 200.0
         return pd.DataFrame({'distance': dist_ref, 'speed': speed, 'throttle': throttle}), lap_time, track_length
 
-    # LIVE API STREAM FLOW
     d_num = drivers_df[drivers_df['full_name'] == driver_api_name]['driver_number'].iloc[0]
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d_num})
     
@@ -158,10 +154,8 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
     tel['throttle'] = pd.to_numeric(tel['throttle'], errors='coerce')
     tel = tel.dropna(subset=['speed', 'throttle', 'date'])
     
-    # ACCURATELY CALCULATE REAL TRACK DISTANCE VIA INTEGRATION
     tel['date'] = pd.to_datetime(tel['date'])
     tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0.0)
-    # distance (m) = speed (m/s) * time (s)
     tel['distance_raw'] = (tel['speed'] / 3.6) * tel['dt'] 
     tel['distance_raw'] = tel['distance_raw'].cumsum()
     
@@ -216,17 +210,14 @@ with st.spinner("Analyzing Lap Metrics..."):
 if df_a.empty or df_b.empty:
     st.error("⚠️ Telemetry stream offline for this live selection. Check 'Enable Simulation Mode' in the sidebar to review dashboard layouts.")
 else:
-    # Highly formatted, readable Title Area
     st.markdown(f"""
         <h2 style='text-transform: uppercase; font-weight: 900; margin-bottom: 0px;'>F1 TELEMETRY ANALYSIS</h2>
         <h4 style='color: #FF1801; font-weight: 600; margin-top: 0px; margin-bottom: 25px;'>{selected_gp} — {selected_session}</h4>
     """, unsafe_allow_html=True)
     
     m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric(label=f"VMAX — {d1_display.split()[-1].upper()}", value=f"{df_a['speed'].max():.0f} KM/H")
-    m2.metric(label=f"VMAX — {d2_display.split()[-1].upper()}", value=f"{df_b['speed'].max():.0f} KM/H")
     
-    # Delta Math and Track Length Processing
+    # Delta Math Processing
     master_track_len = max(len_a, len_b)
     v_a_ms = np.where(df_a['speed'] < 10, 10, df_a['speed']) / 3.6
     v_b_ms = np.where(df_b['speed'] < 10, 10, df_b['speed']) / 3.6
@@ -235,8 +226,24 @@ else:
     delta_time_array = np.cumsum((1 / v_b_ms) - (1 / v_a_ms)) * dx_step
     final_delta = lap_time_a - lap_time_b if (lap_time_a and lap_time_b) else delta_time_array[-1]
     
-    m3.metric(label="LAP TIME DELTA", value=f"{final_delta:.3f} S")
-    m4.metric(label="TRACK DIMENSION", value=f"{master_track_len / 1000.0:.2f} KM")
+    # Max Spatial Gap Calculation
+    max_gap_idx = np.argmax(np.abs(delta_time_array))
+    max_gap = delta_time_array[max_gap_idx]
+    
+    vmax_a = df_a['speed'].max()
+    vmax_b = df_b['speed'].max()
+    vmax_diff = vmax_a - vmax_b
+
+    # Metrics with Native Up/Down Arrows
+    m1.metric(label=f"VMAX — {d1_display.split()[-1].upper()}", value=f"{vmax_a:.0f} KM/H", delta=f"{vmax_diff:.0f} KM/H")
+    m2.metric(label=f"VMAX — {d2_display.split()[-1].upper()}", value=f"{vmax_b:.0f} KM/H", delta=f"{-vmax_diff:.0f} KM/H")
+    
+    # Final Lap Time Gap (Inverse color: negative time is better/faster)
+    m3.metric(label="LAP TIME DELTA", value=f"{abs(final_delta):.3f} S", delta=f"{-final_delta:.3f} S", delta_color="inverse")
+    
+    # Replaced Track Dim with Max Spatial Gap
+    m4.metric(label="MAX SPATIAL GAP", value=f"{abs(max_gap):.3f} S", delta=f"{max_gap:.3f} S")
+    
     m5.metric(label="DATA PIPELINE", value="SIMULATION" if sim_mode else "LIVE API")
 
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
@@ -280,7 +287,7 @@ with st.expander("📖 PIT-WALL TELEMETRY & DATA GOVERNANCE STANDARD"):
     ---
 
     ### 🛡️ Data Governance: Why Simulation Data is Required
-    * **The 2026 Live Data Problem:** The official OpenF1 API database relies on historical, post-race session dumps. Currently, the telemetry for un-driven future races (like the 2026 calendar year) simply does not exist yet.
+    * **The 2026 Live Data Problem:** The official OpenF1 API database relies on historical, post-race session dumps. Currently, the telemetry for un-driven future races simply does not exist yet.
     * **Cloud Proxy Blocking:** Furthermore, cloud hosting platforms frequently face rate-limiting or HTTP 403 blocks from external sports APIs. 
     * **The Solution (Synthetic Transparency):** When live queries drop or data is pending, the app triggers a deterministic, mathematically seeded physics engine. This dynamically constructs realistic circuit lengths, corner profiles, and drag physics unique to the selected Grand Prix. **We explicitly declare this fallback state in the top-right "Data Pipeline Status" card so users never mistake synthetic physics models for live engineering data.**
     """)
