@@ -69,42 +69,73 @@ def get_openf1(endpoint, params=None):
     except:
         return pd.DataFrame()
 
-# --- 3. DATA ENGINE (REAL & SEEDED DYNAMIC SIMULATION) ---
-def get_telemetry(driver_api_name, s_key, drivers_df, is_sim=False, driver_id=1):
+# --- 3. DATA ENGINE (REAL LIVE DATA & ADVANCED DYNAMIC PHYSICS SIM) ---
+def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, is_sim=False, driver_id=1):
     dist_ref = np.linspace(0, 5000, 1000)
     
     if is_sim:
-        # Create a completely unique seed per driver
-        driver_seed = sum(ord(c) for c in driver_api_name) * (driver_id + 7)
-        np.random.seed(driver_seed)
+        # Generate Hashes for Track, Session, and Driver
+        track_hash = sum(ord(c) for c in track_name)
+        session_hash = sum(ord(c) for c in session_name)
+        driver_hash = sum(ord(c) for c in driver_api_name) * (driver_id + 7)
         
-        # 1. DYNAMIC VMAX: Top speed is now uniquely calculated per driver (between 320 and 345 km/h)
-        vmax = 320 + (driver_seed % 25)
+        # 1. GENERATE THE TRACK LAYOUT (Same for both drivers on this specific GP)
+        np.random.seed(track_hash + session_hash)
+        base_vmax = 290.0 + (track_hash % 55) # Track VMAX varies wildly (e.g., Monaco vs Monza)
+        num_corners = 4 + (track_hash % 6)    # Generates between 4 and 9 corners per track
         
-        # 2. UNIQUE BRAKING DYNAMICS
-        brake_shift = (driver_seed % 80) - 40   # Shifts braking zones up to +/- 40 meters
-        apex_drop_1 = 140 - (driver_seed % 25)  # Unique apex speed for Turn 1
-        apex_drop_2 = 120 - ((driver_seed // 2) % 20) # Unique apex speed for Turn 2
-        apex_drop_3 = 160 - ((driver_seed // 3) % 30) # Unique apex speed for Turn 3
+        # Lock in the corner apex positions for this specific track
+        corner_indices = sorted(np.random.choice(range(100, 950), num_corners, replace=False))
+        base_apexes = [90 + np.random.randint(0, 110) for _ in range(num_corners)]
+        base_lap_time = 72.0 + (track_hash % 25)
         
-        # Apply unique physics to the speed trace
-        speed = vmax - apex_drop_1 * np.exp(-((dist_ref - 1150 + brake_shift)/130)**2) \
-                     - apex_drop_2 * np.exp(-((dist_ref - 2700 + brake_shift)/105)**2) \
-                     - apex_drop_3 * np.exp(-((dist_ref - 4150 + brake_shift)/160)**2)
+        # 2. GENERATE DRIVER PHYSICS (How the driver attacks this specific track)
+        np.random.seed(driver_hash + track_hash + session_hash)
         
-        # Apply unique throttle application
-        throttle = 100 - 100 * np.exp(-((dist_ref - 1120 + brake_shift)/150)**2) \
-                       - 100 * np.exp(-((dist_ref - 2650 + brake_shift)/125)**2) \
-                       - 100 * np.exp(-((dist_ref - 4080 + brake_shift)/185)**2)
+        # Driver-specific VMAX (slipstream/setup variation)
+        vmax_cap = base_vmax + (driver_hash % 6) - 3 
         
-        # Unique lap times
-        lap_time = 78.5 + (driver_seed % 500) / 100.0
+        speed = np.full(1000, vmax_cap) 
+        throttle = np.full(1000, 100.0)
         
-        # Add micro-jitter for realism, but DO NOT hard-clip the top speed
-        speed = speed + np.random.normal(0, 0.6, 1000)
-        throttle = np.clip(throttle + np.random.normal(0, 1.1, 1000), 0, 100)
-        throttle[throttle > 93] = 100 
+        for idx, c_idx in enumerate(corner_indices):
+            base_v = base_apexes[idx]
+            
+            # Driver specific cornering habits
+            v_apex = base_v + (driver_hash % 16) - 8
+            brake_len = 25 + (driver_hash % 15)  
+            accel_len = 65 + (driver_hash % 25)  
+            
+            brake_start = max(0, c_idx - brake_len)
+            
+            # Threshold Braking Phase (Steep, cubic drop)
+            for i in range(brake_start, c_idx):
+                progress = (i - brake_start) / brake_len
+                speed[i] = vmax_cap - (vmax_cap - v_apex) * (progress ** 3) 
+                throttle[i] = 0
+                
+            speed[c_idx] = v_apex
+            throttle[c_idx] = 0
+            
+            # Corner Exit Phase (Concave acceleration curve)
+            accel_end = min(1000, c_idx + accel_len)
+            for i in range(c_idx + 1, accel_end):
+                progress = (i - c_idx) / accel_len
+                speed[i] = v_apex + (vmax_cap - v_apex) * np.sqrt(progress) 
+                throttle[i] = min(100, progress * 450) 
+                
+        # Spatial Shifting (Models late vs early braking points)
+        shift = (driver_hash % 12) - 6
+        speed = np.roll(speed, shift)
+        throttle = np.roll(throttle, shift)
         
+        # High-Frequency Noise & Sensor Inertia
+        speed = pd.Series(speed).rolling(window=4, min_periods=1).mean().values
+        speed += np.random.normal(0, 0.9, 1000)
+        throttle += np.random.normal(0, 1.3, 1000)
+        throttle = np.clip(throttle, 0, 100)
+        
+        lap_time = base_lap_time + (driver_hash % 400) / 200.0
         return pd.DataFrame({'distance': dist_ref, 'speed': speed, 'throttle': throttle}), lap_time
 
     # LIVE API STREAM FLOW
@@ -171,8 +202,8 @@ d2_api = drivers_data[drivers_data['display_name'] == d2_display]['full_name'].i
 
 # --- 5. COMPUTE ENGINE ---
 with st.spinner("Analyzing Lap Metrics..."):
-    df_a, lap_time_a = get_telemetry(d1_api, s_key, drivers_data, sim_mode, driver_id=1)
-    df_b, lap_time_b = get_telemetry(d2_api, s_key, drivers_data, sim_mode, driver_id=2)
+    df_a, lap_time_a = get_telemetry(d1_api, s_key, drivers_data, selected_gp, selected_session, sim_mode, driver_id=1)
+    df_b, lap_time_b = get_telemetry(d2_api, s_key, drivers_data, selected_gp, selected_session, sim_mode, driver_id=2)
 
 # --- 6. CORE DISPLAY ---
 if df_a.empty or df_b.empty:
@@ -220,21 +251,21 @@ else:
 with st.expander("📖 PIT-WALL TELEMETRY & DATA GOVERNANCE STANDARD"):
     st.markdown("""
     ### 📊 Telemetry Analysis Breakdown
-    * **Time Delta (Neon Green Line):** Evaluates ongoing advantage metrics throughout the lap configuration. If the graph rises, Driver A is outperforming the reference car through that mini-sector.
-    * **Speed Curves:** Deep 'V' configurations highlight major threshold braking applications. Dips that slide further to the right imply late, aggressive corner entry patterns.
-    * **Throttle Curves:** Tracks mechanical torque recovery phase on corner exit. Reaching a solid 100% plateau sooner highlights superior rear stability and acceleration response.
+    * **Time Delta (Neon Green Line):** Evaluates ongoing advantage metrics. If the graph rises, Driver A is outperforming the reference car.
+    * **Speed Curves:** Deep 'V' configurations highlight major threshold braking zones. True F1 telemetry features a sharp, convex drop (heavy initial G-force) and a concave exit (drag-limited acceleration).
+    * **Throttle Curves:** Reaching a solid 100% plateau sooner highlights superior rear stability and acceleration response.
 
     ---
 
     ### 💻 Systems Infrastructure & Spatial Normalization
-    Telemetry streaming feeds from active hardware packages deliver data packets at irregular, variable frequencies (~3.7 Hz). Because track positioning times vary wildly between individual cars, raw chronologic records remain impossible to plot together without causing severe mathematical artifacts or visual clipping.
+    Telemetry streaming feeds from active hardware packages deliver data packets at irregular, variable frequencies (~3.7 Hz). Because track positioning times vary wildly between individual cars, raw chronologic records remain impossible to plot together without causing severe mathematical artifacts.
     
     To guarantee complete data precision, this platform deploys a custom **Spatial Normalization Pipeline**. Time-series intervals are parsed and remapped into matching spatial steps using one-dimensional linear projection (`np.interp`). Both streams share an identical 1,000-point tracking path, establishing completely safe data alignment.
 
     ---
 
-    ### 🛡️ Data Governance & Transparency Framework
-    * **Data Origin Matrix:** Real-world metrics trace explicitly back to primary timing infrastructure via the OpenF1 API (`api.openf1.org`).
-    * **Why Use Simulation Data?** As of 2026, live telemetry for specific future races on the current calendar may not yet exist in the OpenF1 database. Furthermore, cloud deployment platforms (like Streamlit Community Cloud) frequently face rate-limiting or HTTP 403 blocks from external sports APIs. 
-    * **Synthetic Transparency:** When live queries drop or 2026 data is pending, the app triggers a deterministic, mathematically seeded simulation engine to ensure the UI and analytical structures remain fully auditable. We explicitly declare this state in the top-right **Data Pipeline Status Card** so users never confuse synthetic testing physics with live engineering data.
+    ### 🛡️ Data Governance: Why Simulation Data is Required
+    * **The 2026 Live Data Problem:** The official OpenF1 API database relies on historical, post-race session dumps. Currently, the telemetry for un-driven future races (like the 2026 calendar year) simply does not exist yet.
+    * **Cloud Proxy Blocking:** Furthermore, cloud hosting platforms (like Streamlit Community Cloud) mask their outbound requests through massive shared server IPs. F1's firewall infrastructure aggressively blocks these cloud IP ranges to prevent DDoS attacks, making live-scraping extremely unstable in production.
+    * **The Solution (Synthetic Transparency):** To prevent catastrophic application failure during a recruiter review or portfolio demo, we implemented a highly advanced deterministic physics engine. This engine mathematically replicates high-G F1 track behavior dynamically based on the track and driver hashes. **We explicitly declare this fallback state in the top-right "Data Pipeline Status" card so users never mistake synthetic physics models for live engineering data.**
     """)
