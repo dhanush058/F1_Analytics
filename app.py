@@ -171,10 +171,8 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
     start_str = start_window.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
     end_str = end_window.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
     
-    # FIX: Build the raw string directly so requests DOES NOT encode >= into %3E%3D
     car_endpoint = f"car_data?session_key={s_key}&driver_number={d_num}&date>={start_str}&date<={end_str}"
     
-    # Notice we pass the raw string with NO dictionary to prevent corruption
     tel = get_openf1(car_endpoint)
     
     if tel.empty or 'speed' not in tel.columns: 
@@ -270,10 +268,18 @@ else:
     vmax_b = df_b['speed'].max()
     vmax_diff = vmax_a - vmax_b
 
+    # VMAX metrics (Comparing Absolute Values, so the Sub-Arrow is retained)
     m1.metric(label=f"VMAX — {d1_display.split()[-1].upper()}", value=f"{vmax_a:.0f} KM/H", delta=f"{vmax_diff:.0f} KM/H")
     m2.metric(label=f"VMAX — {d2_display.split()[-1].upper()}", value=f"{vmax_b:.0f} KM/H", delta=f"{-vmax_diff:.0f} KM/H")
-    m3.metric(label="LAP TIME DELTA", value=f"{abs(final_delta):.3f} S", delta=f"{-final_delta:.3f} S", delta_color="inverse")
-    m4.metric(label="MAX SPATIAL GAP", value=f"{abs(max_gap):.3f} S", delta=f"{max_gap:.3f} S")
+    
+    # FIX: Lap/Gap metrics are inherently differences. Redundant delta sub-arrows removed. 
+    # Label is dynamically updated to display who holds the mathematical advantage.
+    adv_lap = d1_display.split()[-1].upper() if final_delta < 0 else d2_display.split()[-1].upper()
+    m3.metric(label=f"LAP TIME DELTA ({adv_lap})", value=f"{abs(final_delta):.3f} S")
+    
+    adv_gap = d1_display.split()[-1].upper() if max_gap > 0 else d2_display.split()[-1].upper()
+    m4.metric(label=f"MAX SPATIAL GAP ({adv_gap})", value=f"{abs(max_gap):.3f} S")
+    
     m5.metric(label="DATA PIPELINE", value="SIMULATION" if sim_mode else "LIVE API")
 
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
