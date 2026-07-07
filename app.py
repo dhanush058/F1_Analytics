@@ -17,6 +17,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- 2. DATA ENGINE ---
 def get_openf1(endpoint, params=None):
     try:
         res = requests.get(f"https://api.openf1.org/v1/{endpoint}", params=params, timeout=45)
@@ -46,12 +47,12 @@ def get_telemetry(d_num, s_key, year, sim, d_id):
     ref = np.linspace(0, tel['dist'].max() if tel['dist'].max() > 0 else 4000.0, 1000)
     return pd.DataFrame({'distance': ref, 'speed': np.interp(ref, tel['dist'], tel['speed']), 'throttle': np.interp(ref, tel['dist'], tel['throttle'])}), f_lap['lap_duration'], tel['dist'].max()
 
-# --- 2. UI & CONTROL ---
+# --- 3. UI & CONTROL ---
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
 meetings = get_openf1("meetings", {"year": year})
 if not meetings.empty:
-    gp_name = st.sidebar.selectbox("GP", meetings['meeting_name'].unique())
-    s_data = get_openf1("sessions", {"meeting_key": meetings[meetings['meeting_name'] == gp_name]['meeting_key'].iloc[0]})
+    gp = st.sidebar.selectbox("GP", meetings['meeting_name'].unique())
+    s_data = get_openf1("sessions", {"meeting_key": meetings[meetings['meeting_name'] == gp]['meeting_key'].iloc[0]})
     s_name = st.sidebar.selectbox("Session", s_data['session_name'].unique())
     s_key = s_data[s_data['session_name'] == s_name]['session_key'].iloc[0]
     drivers = get_openf1("drivers", {"session_key": s_key})
@@ -66,20 +67,16 @@ if not meetings.empty:
         df2, lap2, len2 = get_telemetry(d2_n, s_key, year, sim, 2)
 
         if len(df1) > 5 and len(df2) > 5:
-            st.markdown(f"## {gp_name} | {s_name}")
+            st.markdown(f"## {gp} | {s_name}")
             common = min(len(df1), len(df2))
             delta = np.cumsum((1 / np.maximum(df2['speed'].values[:common]/3.6, 1)) - (1 / np.maximum(df1['speed'].values[:common]/3.6, 1))) * (max(len1, len2)/common)
             
             m1, m2, m3, m4, m5 = st.columns(5)
-            # Lap Delta: positive means A is slower (Red), negative means A is faster (Green)
             lap_diff = lap1 - lap2
-            # Spatial Gap: negative means A is losing ground (Red), positive means A is gaining (Green)
-            spatial_diff = delta[-1]
-            
             m1.metric("VMAX A", f"{df1['speed'].max():.0f} KM/H")
             m2.metric("VMAX B", f"{df2['speed'].max():.0f} KM/H")
             m3.metric("LAP DELTA", f"{lap_diff:+.3f} S", delta=f"{-lap_diff:+.3f}", delta_color="inverse")
-            m4.metric("SPATIAL GAP", f"{spatial_diff:+.3f} S", delta=f"{spatial_diff:+.3f}", delta_color="normal")
+            m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="normal")
             m5.metric("PIPELINE", "SIM" if sim else "LIVE API")
             
             fig = make_subplots(rows=3, cols=1, shared_xaxes=True)
@@ -94,8 +91,9 @@ if not meetings.empty:
 # --- GUIDE ---
 with st.expander("📖 PIT-WALL ANALYTICS GUIDE"):
     st.markdown("""
-    ### 🧠 How to Read These Metrics
-    - **Lap Time Delta:** Shows the difference in time between Driver A and the Reference. A **negative value** (Green) means Driver A is faster. A **positive value** (Red) means Driver A is slower.
-    - **Spatial Gap:** The cumulative time gap between cars over the distance of the track. If the number is **negative** (Red), Driver A is losing time against the Reference driver. If **positive** (Green), they are gaining time.
-    - **Pipeline Status:** Indicates if you are viewing live race telemetry or our physics-based **Simulation Mode**.
+    ### 📊 Metric Definitions
+    - **Lap Time Delta:** A **negative value (Green)** means Driver A is faster. A **positive value (Red)** means they are slower.
+    - **Spatial Gap:** The cumulative time difference between cars mapped across the track distance. **Positive (Green)** indicates Driver A is gaining time; **Negative (Red)** indicates they are losing time.
+    - **Spatial Normalization:** To make the data comparable, we map telemetry from both cars onto a shared 'distance' axis rather than time. This allows us to overlay cornering and braking performance exactly where it happens on track.
+    - **Pipeline Status:** Indicates if you are viewing live race telemetry or our physics-based simulation.
     """)
