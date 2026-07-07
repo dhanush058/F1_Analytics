@@ -29,6 +29,7 @@ st.markdown("""
     [data-testid="stSidebar"] { background-color: #111116; border-right: 2px solid #FF1801; }
     [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
     .title-text { font-size: 1.5rem; color: #FF1801 !important; margin-bottom: 25px; }
+    div[data-testid="stMetricValue"] { color: #FF1801 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -113,31 +114,26 @@ if not meetings.empty:
             m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="normal")
             m5.metric("PIPELINE", "SIM" if sim else "LIVE")
 
-            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, subplot_titles=("Time Delta", "Speed Comparison (KM/H)", "Throttle Application (%)"))
-            # Apply Red font color to all subplot titles
-            fig.layout.annotations[0].update(font=dict(color='#FF1801'))
-            fig.layout.annotations[1].update(font=dict(color='#FF1801'))
-            fig.layout.annotations[2].update(font=dict(color='#FF1801'))
+            # --- SEPARATE PLOT BOXES ---
+            plots = [("Time Delta (S)", delta), ("Speed Comparison (KM/H)", df1['speed']), ("Throttle (%)", df1['throttle'])]
+            titles = ["Time Delta", "Speed Comparison", "Throttle Application"]
             
-            fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta, name="Delta", line=dict(color='#00FF00')), row=1, col=1)
-            fig.add_trace(go.Scatter(x=df1['distance'], y=df1['speed'], name=d1_name, line=dict(color='#00FFFF')), row=2, col=1)
-            fig.add_trace(go.Scatter(x=df2['distance'], y=df2['speed'], name=d2_name, line=dict(color='#FF00FF')), row=2, col=1)
-            fig.add_trace(go.Scatter(x=df1['distance'], y=df1['throttle'], name=d1_name, line=dict(color='#00FFFF'), showlegend=False), row=3, col=1)
-            fig.add_trace(go.Scatter(x=df2['distance'], y=df2['throttle'], name=d2_name, line=dict(color='#FF00FF'), showlegend=False), row=3, col=1)
-            
-            fig.update_layout(template="plotly_dark", height=850)
-            st.plotly_chart(fig, use_container_width=True)
+            for i in range(3):
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta if i==0 else df1.iloc[:, i], name=d1_name, line=dict(color='#00FFFF')))
+                if i > 0: fig.add_trace(go.Scatter(x=df2['distance'], y=df2.iloc[:, i], name=d2_name, line=dict(color='#FF00FF')))
+                fig.update_layout(title=titles[i], title_font_color="#FF1801", template="plotly_dark", height=300, margin=dict(l=20, r=20, t=40, b=20))
+                st.plotly_chart(fig, use_container_width=True)
 
 with st.expander("📖 PIT-WALL ANALYTICS: USER & TECHNICAL GUIDE"):
     st.markdown("""
     ### 🏁 How to Read the Plots
     - **Time Delta:** A negative value (Green) means your primary driver is faster than the reference. 
     - **Spatial Gap:** This tells the story of the lap. A positive slope indicates time gained, while a negative slope indicates time lost. 
-    - **Telemetry Alignment:** Both Speed and Throttle are synchronized by distance (not time). This allows you to pinpoint exactly *where* on the track a driver braked too early or accelerated too late.
+    - **Telemetry Alignment:** Both Speed and Throttle are synchronized by distance (not time).
     
     ### 🏗️ Technical Architecture & Data Governance
-    - **Fail-Safe Pipeline:** The dashboard utilizes an API health-check (`check_api_health`). If the live source is unresponsive, the system automatically redirects to a deterministic simulation engine to ensure the dashboard remains fully functional.
-    - **Spatial Normalization:** F1 data is sampled at different rates. We use `numpy.interp` to standardize telemetry onto a fixed 4km distance axis, ensuring an accurate 'Ghost Car' comparison.
-    - **Deterministic Simulation:** We avoid 'random' simulation. By hashing the `session_key` and `driver_numbers` via `zlib.crc32`, we generate a unique, physically-grounded telemetry fingerprint for every race and driver pairing.
-    - **Data Integrity:** All external requests are governed by strict `timeout` constraints and `User-Agent` headers to protect the pipeline from rate-limiting and network bottlenecks.
+    - **Fail-Safe Pipeline:** Automated switch to deterministic simulation upon API failure.
+    - **Spatial Normalization:** Linear interpolation across a 4km distance axis.
+    - **Deterministic Engine:** `zlib.crc32` hashing for unique, repeatable simulation fingerprints.
     """)
