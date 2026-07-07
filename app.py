@@ -77,11 +77,19 @@ def get_openf1(endpoint, params=None):
 # --- 3. DATA ENGINE (REAL LIVE DATA & ADVANCED DYNAMIC PHYSICS SIM) ---
 def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, is_sim=False, driver_id=1):
     if is_sim:
-        track_hash = sum(ord(c) for c in track_name)
-        session_hash = sum(ord(c) for c in session_name)
-        driver_hash = sum(ord(c) for c in driver_api_name) * (driver_id + 7)
+        # FIX: Utilize the globally unique s_key to prevent data overlap across sessions/years
+        track_hash = sum(ord(c) for c in str(track_name))
         
-        np.random.seed(track_hash + session_hash)
+        try:
+            session_hash = int(s_key) * 13
+        except ValueError:
+            session_hash = sum(ord(c) for c in str(s_key)) * 13
+            
+        driver_hash = sum(ord(c) for c in str(driver_api_name)) * (driver_id + 7)
+        
+        # Enforce numpy seed bounds (must be between 0 and 2**32 - 1)
+        base_seed = (track_hash + session_hash) % (2**32 - 1)
+        np.random.seed(base_seed)
         
         track_length = 4200.0 + (track_hash % 2800)
         dist_ref = np.linspace(0, track_length, 1000)
@@ -93,7 +101,9 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
         base_apexes = [90 + np.random.randint(0, 110) for _ in range(num_corners)]
         base_lap_time = (track_length / 1000) * 15.0 
         
-        np.random.seed(driver_hash + track_hash + session_hash)
+        driver_seed = (driver_hash + track_hash + session_hash) % (2**32 - 1)
+        np.random.seed(driver_seed)
+        
         vmax_cap = base_vmax + (driver_hash % 6) - 3 
         
         speed = np.full(1000, vmax_cap) 
