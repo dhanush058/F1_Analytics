@@ -66,7 +66,6 @@ COLOR_DELTA = '#00FF00'
 COLOR_BG = '#0B0B0E'    
 
 # --- 2. ROBUST API FETCHER ---
-# Removed @st.cache_data to prevent "poisoning" the cache with empty data when the API drops
 def get_openf1(endpoint, params=None):
     base_url = "https://api.openf1.org/v1/"
     headers = {
@@ -146,10 +145,9 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
         return pd.DataFrame({'distance': dist_ref, 'speed': speed, 'throttle': throttle}), lap_time, track_length
 
     # === REAL DATA FETCHING LOGIC (100% Accurate API Data) ===
-    
     try:
         d_num = int(drivers_df[drivers_df['full_name'] == driver_api_name]['driver_number'].iloc[0])
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, IndexError):
         return pd.DataFrame(), None, 0
 
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d_num})
@@ -167,10 +165,12 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
     if start_time.tzinfo is not None:
         start_time = start_time.tz_convert('UTC').tz_localize(None)
         
-    end_time = start_time + pd.Timedelta(seconds=float(fastest_lap['lap_duration']) + 0.5)
+    # FIX: Add a safe timing window padding (-0.5s and +0.5s) to guarantee server data alignment
+    start_window = start_time - pd.Timedelta(seconds=0.5)
+    end_window = start_time + pd.Timedelta(seconds=float(fastest_lap['lap_duration']) + 0.5)
     
-    start_str = start_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
-    end_str = end_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
+    start_str = start_window.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
+    end_str = end_window.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
     
     tel = get_openf1("car_data", {
         "session_key": s_key, 
@@ -190,12 +190,16 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
         return pd.DataFrame(), fastest_lap['lap_duration'], 0
         
     tel['date'] = pd.to_datetime(tel['date'])
+    tel = tel.sort_values('date').reset_index(drop=True)
     tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0.0)
     
     tel['distance_raw'] = (tel['speed'] / 3.6) * tel['dt'] 
     tel['distance_raw'] = tel['distance_raw'].cumsum()
     
     track_length = tel['distance_raw'].max()
+    if track_length <= 0:
+        track_length = 4000.0
+        
     dist_ref = np.linspace(0, track_length, 1000)
     
     df_normalized = pd.DataFrame({
