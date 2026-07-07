@@ -27,17 +27,12 @@ st.markdown("""
 <style>
     .stApp { background-color: #0B0B0E; color: #FFFFFF; font-family: 'Segoe UI', sans-serif; }
     [data-testid="stSidebar"] { background-color: #111116; border-right: 2px solid #FF1801; }
-    [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 10px; }
+    [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
     .title-text { font-size: 1.5rem; font-weight: 300; color: #FFFFFF !important; margin-bottom: 20px; }
 </style>
 """, unsafe_allow_html=True)
 
 # --- 2. RESILIENT DATA ENGINE ---
-def check_api_health():
-    try:
-        return requests.get("https://api.openf1.org/v1/meetings?year=2024", timeout=5).status_code == 200
-    except: return False
-
 def get_openf1(endpoint, params=None):
     try:
         headers = {'User-Agent': 'F1-PitWall-Analytics/2.0'}
@@ -45,26 +40,23 @@ def get_openf1(endpoint, params=None):
         return pd.DataFrame(res.json()) if res.status_code == 200 else pd.DataFrame()
     except: return pd.DataFrame()
 
-def get_telemetry(d_num, s_key, sim, d_id, offset=0):
+def get_fastest_lap_telemetry(d_num, s_key, sim, d_id, offset=0):
     if sim:
-        # Generate a seed that guarantees unique curves for each driver
-        base_seed = zlib.crc32(f"{s_key}_{d_num}".encode())
-        np.random.seed(base_seed + offset)
+        seed = zlib.crc32(f"{s_key}_{d_num}_{d_id}".encode())
+        np.random.seed(seed + offset)
         dist = np.linspace(0, 4000.0, 1000)
-        
-        # Complex harmonic series to simulate real-world telemetry noise
-        speed = 280 + 40 * np.sin(dist/400 + offset) + 20 * np.sin(dist/150) + 10 * np.random.randn(1000)
-        throttle = 50 + 50 * np.sin(dist/300 + offset) + 20 * np.random.randn(1000)
-        throttle = np.clip(throttle, 0, 100)
-        
-        return pd.DataFrame({'distance': dist, 'speed': speed, 'throttle': throttle}), 85.0 + (base_seed % 10), 4000.0
+        speed = 280 + 40 * np.sin(dist/400 + offset) + 20 * np.sin(dist/150)
+        throttle = np.clip(50 + 50 * np.sin(dist/300 + offset), 0, 100)
+        return pd.DataFrame({'distance': dist, 'speed': speed, 'throttle': throttle}), 85.0, 4000.0
     
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d_num})
     if laps.empty: return pd.DataFrame(), 0, 0
     f_lap = laps.sort_values('lap_duration').iloc[0]
     
     start = pd.to_datetime(f_lap['date_start']).tz_convert('UTC').tz_localize(None)
-    tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d_num}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={(start + pd.Timedelta(seconds=float(f_lap['lap_duration']))).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
+    end = start + pd.Timedelta(seconds=float(f_lap['lap_duration']))
+    tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d_num}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={end.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
+    
     if tel.empty: return pd.DataFrame(), f_lap['lap_duration'], 0
     tel['date'] = pd.to_datetime(tel['date'])
     tel = tel.sort_values('date')
@@ -75,7 +67,6 @@ def get_telemetry(d_num, s_key, sim, d_id, offset=0):
 
 # --- 3. UI & CONTROL ---
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
-is_api_healthy = check_api_health()
 meetings = get_openf1("meetings", {"year": year})
 
 if not meetings.empty:
@@ -88,29 +79,27 @@ if not meetings.empty:
     if not drivers.empty:
         d1_name = st.sidebar.selectbox("Driver A", sorted(drivers['full_name'].str.title().unique()))
         d2_name = st.sidebar.selectbox("Ref Driver", sorted(drivers['full_name'].str.title().unique()), index=1)
-        sim = st.sidebar.checkbox("Simulation Mode", value=not is_api_healthy)
+        sim = st.sidebar.checkbox("Simulation Mode")
         
         d1_n = drivers[drivers['full_name'].str.title() == d1_name]['driver_number'].iloc[0]
         d2_n = drivers[drivers['full_name'].str.title() == d2_name]['driver_number'].iloc[0]
         
-        # Call with unique offsets
-        df1, lap1, len1 = get_telemetry(d1_n, s_key, sim, 1, offset=0)
-        df2, lap2, len2 = get_telemetry(d2_n, s_key, sim, 2, offset=5)
+        df1, lap1, len1 = get_fastest_lap_telemetry(d1_n, s_key, sim, 1, 0)
+        df2, lap2, len2 = get_fastest_lap_telemetry(d2_n, s_key, sim, 2, 5)
 
-        city = next((v for k, v in CITY_MAP.items() if k in gp_raw), "Location")
-        st.markdown(f"<div class='title-text'>{gp_raw}, {year}, {city}, {s_name}</div>", unsafe_allow_html=True)
+        common = min(len(df1), len(df2))
+        delta = np.cumsum((1 / np.maximum(df2['speed'].values[:common]/3.6, 1)) - (1 / np.maximum(df1['speed'].values[:common]/3.6, 1))) * (max(len1, len2)/common)
+        vmax_diff = df1['speed'].max() - df2['speed'].max()
 
         m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric(d1_name.split()[-1].upper(), f"{df1['speed'].max():.0f} KM/H")
-        m2.metric(d2_name.split()[-1].upper(), f"{df2['speed'].max():.0f} KM/H")
-        m3.metric("LAP DELTA", f"{lap1-lap2:+.3f} S")
-        m4.metric("STATUS", "SIM" if sim else "LIVE")
-        
-        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
-                            subplot_titles=("Time Delta", "Speed Comparison (KM/H)", "Throttle Application (%)"))
-        
-        # Plotting both
-        fig.add_trace(go.Scatter(x=df1['distance'], y=df1['speed']-df2['speed'], name="Speed Delta", line=dict(color='#00FF00')), row=1, col=1)
+        m1.metric(d1_name.split()[-1].upper(), f"{df1['speed'].max():.0f} KM/H", f"{vmax_diff:+.0f}")
+        m2.metric(d2_name.split()[-1].upper(), f"{df2['speed'].max():.0f} KM/H", f"{-vmax_diff:+.0f}")
+        m3.metric("LAP DELTA", f"{lap1-lap2:+.3f} S", delta=f"{lap2-lap1:+.3f}", delta_color="inverse")
+        m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="normal")
+        m5.metric("PIPELINE", "SIM" if sim else "LIVE")
+
+        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, subplot_titles=("Time Delta", "Speed Comparison (KM/H)", "Throttle Application (%)"))
+        fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta, name="Delta", line=dict(color='#00FF00')), row=1, col=1)
         fig.add_trace(go.Scatter(x=df1['distance'], y=df1['speed'], name=d1_name, line=dict(color='#00FFFF')), row=2, col=1)
         fig.add_trace(go.Scatter(x=df2['distance'], y=df2['speed'], name=d2_name, line=dict(color='#FF00FF')), row=2, col=1)
         fig.add_trace(go.Scatter(x=df1['distance'], y=df1['throttle'], name=d1_name, line=dict(color='#00FFFF'), showlegend=False), row=3, col=1)
@@ -118,3 +107,12 @@ if not meetings.empty:
         
         fig.update_layout(template="plotly_dark", height=850)
         st.plotly_chart(fig, use_container_width=True)
+
+# --- GUIDE ---
+with st.expander("🛡️ SYSTEM STATUS & ANALYTICS GUIDE"):
+    st.markdown("""
+    ### 🧠 Data Interpretation
+    - **Lap Time Delta:** Green indicates Driver A is faster. Red indicates they are slower.
+    - **Spatial Gap:** Indicates net gain/loss over the track length.
+    - **Normalization:** Telemetry is resampled using linear interpolation across a shared 4km distance axis.
+    """)
