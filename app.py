@@ -27,8 +27,8 @@ st.markdown("""
 <style>
     .stApp { background-color: #0B0B0E; color: #FFFFFF; font-family: 'Segoe UI', sans-serif; }
     [data-testid="stSidebar"] { background-color: #111116; border-right: 2px solid #FF1801; }
-    [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 10px; }
-    .title-text { font-size: 1.5rem; font-weight: 300; color: #FFFFFF !important; margin-bottom: 15px; }
+    [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
+    .title-text { font-size: 1.5rem; font-weight: 300; color: #FFFFFF !important; margin-bottom: 20px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -49,16 +49,13 @@ def get_telemetry(d_num, s_key, year, sim, d_id):
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d_num})
     if laps.empty: return pd.DataFrame(), 0, 0
     f_lap = laps.sort_values('lap_duration').iloc[0]
-    
     start = pd.to_datetime(f_lap['date_start']).tz_convert('UTC').tz_localize(None)
     tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d_num}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={(start + pd.Timedelta(seconds=float(f_lap['lap_duration']))).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
     if tel.empty: return pd.DataFrame(), f_lap['lap_duration'], 0
-    
     tel['date'] = pd.to_datetime(tel['date'])
     tel = tel.sort_values('date')
     tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0)
     tel['dist'] = ((tel['speed']/3.6) * tel['dt']).cumsum()
-    
     ref = np.linspace(0, tel['dist'].max() if tel['dist'].max() > 0 else 4000.0, 1000)
     return pd.DataFrame({'distance': ref, 'speed': np.interp(ref, tel['dist'], tel['speed']), 'throttle': np.interp(ref, tel['dist'], tel['throttle'])}), f_lap['lap_duration'], tel['dist'].max()
 
@@ -73,14 +70,16 @@ if not meetings.empty:
     drivers = get_openf1("drivers", {"session_key": s_key})
     
     if not drivers.empty:
-        d1, d2 = st.sidebar.selectbox("Driver A", sorted(drivers['full_name'].str.title().unique())), st.sidebar.selectbox("Ref Driver", sorted(drivers['full_name'].str.title().unique()), index=1)
+        d1_name = st.sidebar.selectbox("Driver A", sorted(drivers['full_name'].str.title().unique()))
+        d2_name = st.sidebar.selectbox("Ref Driver", sorted(drivers['full_name'].str.title().unique()), index=1)
         sim = st.sidebar.checkbox("Simulation Mode")
 
+        # Determine City
         city = next((v for k, v in CITY_MAP.items() if k in gp_raw), "Location")
         st.markdown(f"<div class='title-text'>{gp_raw}, {year}, {city}, {s_name}</div>", unsafe_allow_html=True)
 
-        d1_n = drivers[drivers['full_name'].str.title()==d1]['driver_number'].iloc[0]
-        d2_n = drivers[drivers['full_name'].str.title()==d2]['driver_number'].iloc[0]
+        d1_n = drivers[drivers['full_name'].str.title()==d1_name]['driver_number'].iloc[0]
+        d2_n = drivers[drivers['full_name'].str.title()==d2_name]['driver_number'].iloc[0]
         df1, lap1, len1 = get_telemetry(d1_n, s_key, year, sim, 1)
         df2, lap2, len2 = get_telemetry(d2_n, s_key, year, sim, 2)
 
@@ -89,19 +88,21 @@ if not meetings.empty:
             delta = np.cumsum((1 / np.maximum(df2['speed'].values[:common]/3.6, 1)) - (1 / np.maximum(df1['speed'].values[:common]/3.6, 1))) * (max(len1, len2)/common)
             
             m1, m2, m3, m4, m5 = st.columns(5)
-            lap_diff = lap1 - lap2
-            m1.metric("VMAX A", f"{df1['speed'].max():.0f} KM/H")
-            m2.metric("VMAX B", f"{df2['speed'].max():.0f} KM/H")
-            m3.metric("LAP DELTA", f"{lap_diff:+.3f} S", delta=f"{-lap_diff:+.3f}", delta_color="inverse")
+            # Velocity difference calculation
+            vmax_diff = df1['speed'].max() - df2['speed'].max()
+            
+            m1.metric(d1_name.split()[-1].upper(), f"{df1['speed'].max():.0f} KM/H", f"{vmax_diff:+.0f}")
+            m2.metric(d2_name.split()[-1].upper(), f"{df2['speed'].max():.0f} KM/H", f"{-vmax_diff:+.0f}")
+            m3.metric("LAP DELTA", f"{lap1-lap2:+.3f} S", delta=f"{lap2-lap1:+.3f}", delta_color="inverse")
             m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="normal")
-            m5.metric("PIPELINE", "SIM" if sim else "LIVE API")
+            m5.metric("PIPELINE", "SIM" if sim else "LIVE")
             
             fig = make_subplots(rows=3, cols=1, shared_xaxes=True)
             fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta, name="Delta", line=dict(color='#00FF00')), row=1, col=1)
-            fig.add_trace(go.Scatter(x=df1['distance'], y=df1['speed'], name=d1, line=dict(color='#00FFFF')), row=2, col=1)
-            fig.add_trace(go.Scatter(x=df2['distance'], y=df2['speed'], name=d2, line=dict(color='#FF00FF')), row=2, col=1)
-            fig.add_trace(go.Scatter(x=df1['distance'], y=df1['throttle'], name=d1, line=dict(color='#00FFFF'), showlegend=False), row=3, col=1)
-            fig.add_trace(go.Scatter(x=df2['distance'], y=df2['throttle'], name=d2, line=dict(color='#FF00FF'), showlegend=False), row=3, col=1)
+            fig.add_trace(go.Scatter(x=df1['distance'], y=df1['speed'], name=d1_name, line=dict(color='#00FFFF')), row=2, col=1)
+            fig.add_trace(go.Scatter(x=df2['distance'], y=df2['speed'], name=d2_name, line=dict(color='#FF00FF')), row=2, col=1)
+            fig.add_trace(go.Scatter(x=df1['distance'], y=df1['throttle'], name=d1_name, line=dict(color='#00FFFF'), showlegend=False), row=3, col=1)
+            fig.add_trace(go.Scatter(x=df2['distance'], y=df2['throttle'], name=d2_name, line=dict(color='#FF00FF'), showlegend=False), row=3, col=1)
             fig.update_layout(template="plotly_dark", height=850)
             st.plotly_chart(fig, use_container_width=True)
 
@@ -109,7 +110,7 @@ if not meetings.empty:
 with st.expander("📖 PIT-WALL ANALYTICS GUIDE"):
     st.markdown("""
     ### 🧠 How to Read These Metrics
-    - **Lap Time Delta:** A **negative value (Green)** means Driver A is faster. A **positive value (Red)** means they are slower.
-    - **Spatial Gap:** The cumulative time difference between drivers. **Positive (Green)** means Driver A is gaining time; **Negative (Red)** means they are losing ground.
-    - **Pipeline Status:** Indicates if you are viewing live telemetry or our **Simulation Mode**.
+    - **Lap Time Delta:** A negative value (Green) means Driver A is faster.
+    - **Spatial Gap:** Positive (Green) means Driver A is gaining ground; Negative (Red) means they are losing time.
+    - **VMAX Delta:** Shows the top-speed advantage for each driver over their opponent.
     """)
