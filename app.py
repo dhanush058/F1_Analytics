@@ -61,7 +61,9 @@ def get_telemetry(d1_n, d2_n, s_key, sim, d_id, offset=0):
     end = start + pd.Timedelta(seconds=float(f_lap['lap_duration']))
     tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d1_n}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={end.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
     
-    if tel.empty or 'date' not in tel.columns: return pd.DataFrame(), f_lap['lap_duration'], 0
+    # Defensive check: ensure data exists and has required columns
+    if tel.empty or 'date' not in tel.columns or 'speed' not in tel.columns: 
+        return pd.DataFrame(), f_lap['lap_duration'], 0
     
     tel['date'] = pd.to_datetime(tel['date'])
     tel = tel.sort_values('date')
@@ -100,32 +102,33 @@ if not meetings.empty:
         df1, lap1, len1 = get_telemetry(d1_n, d2_n, s_key, sim, 1, 0)
         df2, lap2, len2 = get_telemetry(d2_n, d1_n, s_key, sim, 2, 5)
 
-        common = min(len(df1), len(df2))
-        delta = np.cumsum((1 / np.maximum(df2['speed'].values[:common]/3.6, 1)) - (1 / np.maximum(df1['speed'].values[:common]/3.6, 1))) * (max(len1, len2)/common)
-        
-        m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric(d1_name.split()[-1].upper(), f"{df1['speed'].max():.0f} KM/H", f"{df1['speed'].max()-df2['speed'].max():+.0f}")
-        m2.metric(d2_name.split()[-1].upper(), f"{df2['speed'].max():.0f} KM/H", f"{df2['speed'].max()-df1['speed'].max():+.0f}")
-        m3.metric("LAP DELTA", f"{lap1-lap2:+.3f} S", delta=f"{lap2-lap1:+.3f}", delta_color="inverse")
-        m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="normal")
-        m5.metric("PIPELINE", "SIM" if sim else "LIVE")
+        if not df1.empty and not df2.empty:
+            common = min(len(df1), len(df2))
+            delta = np.cumsum((1 / np.maximum(df2['speed'].values[:common]/3.6, 1)) - (1 / np.maximum(df1['speed'].values[:common]/3.6, 1))) * (max(len1, len2)/common)
+            
+            m1, m2, m3, m4, m5 = st.columns(5)
+            m1.metric(d1_name.split()[-1].upper(), f"{df1['speed'].max():.0f} KM/H", f"{df1['speed'].max()-df2['speed'].max():+.0f}")
+            m2.metric(d2_name.split()[-1].upper(), f"{df2['speed'].max():.0f} KM/H", f"{df2['speed'].max()-df1['speed'].max():+.0f}")
+            m3.metric("LAP DELTA", f"{lap1-lap2:+.3f} S", delta=f"{lap2-lap1:+.3f}", delta_color="inverse")
+            m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="normal")
+            m5.metric("PIPELINE", "SIM" if sim else "LIVE")
 
-        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, subplot_titles=("Time Delta", "Speed Comparison (KM/H)", "Throttle Application (%)"))
-        fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta, name="Delta", line=dict(color='#00FF00')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df1['distance'], y=df1['speed'], name=d1_name, line=dict(color='#00FFFF')), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df2['distance'], y=df2['speed'], name=d2_name, line=dict(color='#FF00FF')), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df1['distance'], y=df1['throttle'], name=d1_name, line=dict(color='#00FFFF'), showlegend=False), row=3, col=1)
-        fig.add_trace(go.Scatter(x=df2['distance'], y=df2['throttle'], name=d2_name, line=dict(color='#FF00FF'), showlegend=False), row=3, col=1)
-        
-        fig.update_layout(template="plotly_dark", height=850)
-        st.plotly_chart(fig, use_container_width=True)
+            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, subplot_titles=("Time Delta", "Speed Comparison (KM/H)", "Throttle Application (%)"))
+            fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta, name="Delta", line=dict(color='#00FF00')), row=1, col=1)
+            fig.add_trace(go.Scatter(x=df1['distance'], y=df1['speed'], name=d1_name, line=dict(color='#00FFFF')), row=2, col=1)
+            fig.add_trace(go.Scatter(x=df2['distance'], y=df2['speed'], name=d2_name, line=dict(color='#FF00FF')), row=2, col=1)
+            fig.add_trace(go.Scatter(x=df1['distance'], y=df1['throttle'], name=d1_name, line=dict(color='#00FFFF'), showlegend=False), row=3, col=1)
+            fig.add_trace(go.Scatter(x=df2['distance'], y=df2['throttle'], name=d2_name, line=dict(color='#FF00FF'), showlegend=False), row=3, col=1)
+            
+            fig.update_layout(template="plotly_dark", height=850)
+            st.plotly_chart(fig, use_container_width=True)
 
 with st.expander("📖 PIT-WALL ANALYTICS: USER & TECHNICAL GUIDE"):
     st.markdown("""
     ### 🏁 How to Read the Plots
     - **Time Delta:** A negative value (Green) means your primary driver is faster than the reference. 
     - **Spatial Gap:** This tells the story of the lap. A positive slope indicates time gained, while a negative slope indicates time lost. 
-    - **Telemetry Alignment:** Both Speed and Throttle are synchronized by distance (not time). This allows you to pinpoint exactly *where* on the track (e.g., at 1500m) a driver braked too early or accelerated too late.
+    - **Telemetry Alignment:** Both Speed and Throttle are synchronized by distance (not time). This allows you to pinpoint exactly *where* on the track a driver braked too early or accelerated too late.
     
     ### 🏗️ Technical Architecture & Data Governance
     - **Fail-Safe Pipeline:** The dashboard utilizes an API health-check (`check_api_health`). If the live source is unresponsive, the system automatically redirects to a deterministic simulation engine to ensure the dashboard remains fully functional.
