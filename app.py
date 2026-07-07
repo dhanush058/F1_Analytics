@@ -114,20 +114,13 @@ if not meetings.empty:
             m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="normal")
             m5.metric("PIPELINE", "SIM" if sim else "LIVE")
 
-            titles = ["Time Delta (s)", "Speed (km/h)", "Throttle (%)"]
-            y_labels = ["Delta (s)", "Speed (km/h)", "Throttle (%)"]
-            data_cols = [delta, df1['speed'], df1['throttle']]
-            
-            for i in range(3):
+            # Corrected Indexing
+            plot_configs = [("Time Delta", delta, None), ("Speed Comparison (KM/H)", df1['speed'], df2['speed']), ("Throttle (%)", df1['throttle'], df2['throttle'])]
+            for i, (title, y1, y2) in enumerate(plot_configs):
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta if i==0 else df1.iloc[:, i+1], name=d1_name, line=dict(color='#00FFFF')))
-                if i > 0: fig.add_trace(go.Scatter(x=df2['distance'], y=df2.iloc[:, i+1], name=d2_name, line=dict(color='#FF00FF')))
-                
-                fig.update_layout(
-                    title=dict(text=titles[i], x=0.05, font=dict(color='#FF1801')),
-                    xaxis=dict(title="Distance (m)"), yaxis=dict(title=y_labels[i]),
-                    template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40)
-                )
+                fig.add_trace(go.Scatter(x=df1['distance'][:common], y=y1, name=d1_name, line=dict(color='#00FFFF')))
+                if y2 is not None: fig.add_trace(go.Scatter(x=df2['distance'], y=y2, name=d2_name, line=dict(color='#FF00FF')))
+                fig.update_layout(title=dict(text=title, x=0.05, font=dict(color='#FF1801')), xaxis=dict(title="Distance (m)"), yaxis=dict(title=title.split(' ')[0]), template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40))
                 st.plotly_chart(fig, use_container_width=True)
 
 with st.expander("📖 PIT-WALL ANALYTICS: USER & TECHNICAL GUIDE"):
