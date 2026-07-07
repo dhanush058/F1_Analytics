@@ -61,16 +61,17 @@ def get_telemetry(d1_n, d2_n, s_key, sim, d_id, offset=0):
     end = start + pd.Timedelta(seconds=float(f_lap['lap_duration']))
     tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d1_n}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={end.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
     
-    # Defensive check: ensure data exists and has required columns
-    if tel.empty or 'date' not in tel.columns or 'speed' not in tel.columns: 
+    # Robust safety check using try-except to handle malformed date parsing
+    try:
+        if tel.empty or 'date' not in tel.columns: return pd.DataFrame(), f_lap['lap_duration'], 0
+        tel['date'] = pd.to_datetime(tel['date'])
+        tel = tel.sort_values('date')
+        tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0)
+        tel['dist'] = ((tel['speed']/3.6) * tel['dt']).cumsum()
+        ref = np.linspace(0, tel['dist'].max() if tel['dist'].max() > 0 else 4000.0, 1000)
+        return pd.DataFrame({'distance': ref, 'speed': np.interp(ref, tel['dist'], tel['speed']), 'throttle': np.interp(ref, tel['dist'], tel['throttle'])}), f_lap['lap_duration'], tel['dist'].max()
+    except Exception:
         return pd.DataFrame(), f_lap['lap_duration'], 0
-    
-    tel['date'] = pd.to_datetime(tel['date'])
-    tel = tel.sort_values('date')
-    tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0)
-    tel['dist'] = ((tel['speed']/3.6) * tel['dt']).cumsum()
-    ref = np.linspace(0, tel['dist'].max() if tel['dist'].max() > 0 else 4000.0, 1000)
-    return pd.DataFrame({'distance': ref, 'speed': np.interp(ref, tel['dist'], tel['speed']), 'throttle': np.interp(ref, tel['dist'], tel['throttle'])}), f_lap['lap_duration'], tel['dist'].max()
 
 # --- 3. UI & CONTROL ---
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
