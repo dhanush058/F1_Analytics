@@ -114,24 +114,32 @@ if not meetings.empty:
             m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="normal")
             m5.metric("PIPELINE", "SIM" if sim else "LIVE")
 
-            # Corrected Indexing
-            plot_configs = [("Time Delta", delta, None), ("Speed Comparison (KM/H)", df1['speed'], df2['speed']), ("Throttle (%)", df1['throttle'], df2['throttle'])]
-            for i, (title, y1, y2) in enumerate(plot_configs):
+            # --- PLOT BOXES ---
+            titles = ["Time Delta", "Speed Comparison", "Throttle Application"]
+            y_labels = ["Delta (s)", "Speed (km/h)", "Throttle (%)"]
+            for i, title in enumerate(titles):
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df1['distance'][:common], y=y1, name=d1_name, line=dict(color='#00FFFF')))
-                if y2 is not None: fig.add_trace(go.Scatter(x=df2['distance'], y=y2, name=d2_name, line=dict(color='#FF00FF')))
-                fig.update_layout(title=dict(text=title, x=0.05, font=dict(color='#FF1801')), xaxis=dict(title="Distance (m)"), yaxis=dict(title=title.split(' ')[0]), template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40))
+                fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta if i==0 else df1.iloc[:, i], name=d1_name, line=dict(color='#00FFFF')))
+                if i > 0: fig.add_trace(go.Scatter(x=df2['distance'], y=df2.iloc[:, i], name=d2_name, line=dict(color='#FF00FF')))
+                fig.update_layout(title=dict(text=title, x=0.05, font=dict(color='#FF1801')), xaxis=dict(title="Distance (m)"), yaxis=dict(title=y_labels[i]), template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40))
                 st.plotly_chart(fig, use_container_width=True)
 
-with st.expander("📖 PIT-WALL ANALYTICS: USER & TECHNICAL GUIDE"):
+with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
     st.markdown("""
-    ### 🏁 How to Read the Plots
-    - **Time Delta:** A negative value (Green) means your primary driver is faster than the reference. 
-    - **Spatial Gap:** This tells the story of the lap. A positive slope indicates time gained, while a negative slope indicates time lost. 
-    - **Telemetry Alignment:** Both Speed and Throttle are synchronized by distance (not time).
+    ### 1. Understanding the Metrics
+    - **Driver Max Speed:** Peak velocity achieved in the fastest lap. The sub-metric shows the speed advantage (+) or disadvantage (-) against the reference.
+    - **Lap Delta:** The total difference in lap completion time between the two drivers. Green/Red indicators show performance relative to the reference.
+    - **Spatial Gap:** Shows the cumulative time difference across the track. This helps identify precisely *where* a driver is gaining or losing time (e.g., in corners vs. straights).
     
-    ### 🏗️ Technical Architecture & Data Governance
-    - **Fail-Safe Pipeline:** Automated switch to deterministic simulation upon API failure.
-    - **Spatial Normalization:** Linear interpolation across a 4km distance axis.
-    - **Deterministic Engine:** `zlib.crc32` hashing for unique, repeatable simulation fingerprints.
+    ### 2. How to Read the Plots
+    - **Time Delta Plot:** Green curves indicate where your chosen driver is gaining time; negative values show superiority.
+    - **Speed & Throttle Plots:** These are synchronized by track distance, not time. Use these to correlate braking points and corner exit speed—look for where one driver "dips" their speed compared to the other.
+    
+    ### 3. Technical Explanation
+    - **Spatial Normalization:** Since telemetry is sampled at different rates, we use `numpy.interp` to map all data points onto a standardized 4km distance axis. This creates a "Ghost Car" effect for accurate comparison.
+    - **Simulation Engine:** Uses `zlib.crc32` to generate deterministic "telemetry fingerprints." This ensures that the simulation remains high-fidelity, repeatable, and physics-grounded.
+    
+    ### 4. Data Governance
+    - **Fail-Safe Pipeline:** The system performs a live API handshake. If data is unreachable, it forces a transition to a simulated environment to preserve dashboard availability.
+    - **Data Integrity:** All API calls use dedicated headers and timeout constraints to prevent network bottlenecks and ensure the reliability of the analytical stream.
     """)
