@@ -28,7 +28,7 @@ st.markdown("""
     .stApp { background-color: #0B0B0E; color: #FFFFFF; font-family: 'Segoe UI', sans-serif; }
     [data-testid="stSidebar"] { background-color: #111116; border-right: 2px solid #FF1801; }
     [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
-    .title-text { font-size: 1.8rem; font-weight: 500; color: #FF1801 !important; margin-bottom: 25px; }
+    .title-text { font-size: 1.5rem; color: #FFFFFF !important; margin-bottom: 25px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -49,7 +49,6 @@ def get_telemetry(d1_n, d2_n, s_key, sim, d_id, offset=0):
         seed = zlib.crc32(f"{s_key}_{d1_n}_{d2_n}_{d_id}".encode())
         np.random.seed(seed + offset)
         dist = np.linspace(0, 4000.0, 1000)
-        # Physics model: Harmonic superposition for realistic "busy" telemetry
         speed = 280 + 40 * np.sin(dist/400 + offset) + 20 * np.sin(dist/150)
         throttle = np.clip(50 + 50 * np.sin(dist/300 + offset), 0, 100)
         return pd.DataFrame({'distance': dist, 'speed': speed, 'throttle': throttle}), 85.0, 4000.0
@@ -62,7 +61,8 @@ def get_telemetry(d1_n, d2_n, s_key, sim, d_id, offset=0):
     end = start + pd.Timedelta(seconds=float(f_lap['lap_duration']))
     tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d1_n}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={end.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
     
-    if tel.empty: return pd.DataFrame(), f_lap['lap_duration'], 0
+    if tel.empty or 'date' not in tel.columns: return pd.DataFrame(), f_lap['lap_duration'], 0
+    
     tel['date'] = pd.to_datetime(tel['date'])
     tel = tel.sort_values('date')
     tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0)
@@ -92,7 +92,7 @@ if not meetings.empty:
             st.stop()
         
         city = CITY_MAP.get(gp_raw, "Global Circuit")
-        st.markdown(f"<div class='title-text'>{gp_raw.upper()} | {city.upper()} | {year} | {s_name.upper()}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='title-text'>{gp_raw}, {city}, {year}, {s_name}</div>", unsafe_allow_html=True)
         
         d1_n = drivers[drivers['full_name'].str.title() == d1_name]['driver_number'].iloc[0]
         d2_n = drivers[drivers['full_name'].str.title() == d2_name]['driver_number'].iloc[0]
@@ -120,7 +120,6 @@ if not meetings.empty:
         fig.update_layout(template="plotly_dark", height=850)
         st.plotly_chart(fig, use_container_width=True)
 
-# --- 4. COMPREHENSIVE GUIDE ---
 with st.expander("📖 PIT-WALL ANALYTICS: USER & TECHNICAL GUIDE"):
     st.markdown("""
     ### 🏁 How to Read the Plots
