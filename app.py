@@ -17,9 +17,9 @@ CITY_MAP = {
     "Hungarian Grand Prix": "Budapest", "Dutch Grand Prix": "Zandvoort",
     "Italian Grand Prix": "Monza", "Azerbaijan Grand Prix": "Baku",
     "Singapore Grand Prix": "Singapore", "United States Grand Prix": "Austin",
-    "United States Grand Prix": "Austin", "Mexican Grand Prix": "Mexico City", 
-    "Sao Paulo Grand Prix": "São Paulo", "Las Vegas Grand Prix": "Las Vegas", 
-    "Qatar Grand Prix": "Lusail", "Abu Dhabi Grand Prix": "Yas Island"
+    "Mexican Grand Prix": "Mexico City", "Sao Paulo Grand Prix": "São Paulo",
+    "Las Vegas Grand Prix": "Las Vegas", "Qatar Grand Prix": "Lusail",
+    "Abu Dhabi Grand Prix": "Yas Island"
 }
 
 st.set_page_config(layout="wide", page_title="F1 Analytics: Pit-Wall")
@@ -50,12 +50,14 @@ def get_telemetry(d_num, s_key, year, sim, d_id):
         seed = zlib.crc32(f"{year}_{d_num}_{d_id}".encode())
         np.random.seed(seed)
         dist = np.linspace(0, 4000.0, 1000)
-        return pd.DataFrame({'distance': dist, 'speed': 290.0+(seed%10), 'throttle': 100.0}), 90.0, 4000.0
+        # Create non-flat, realistic-looking curves for simulation
+        speed = 280 + 30 * np.sin(dist / 500) + (seed % 10)
+        throttle = 80 + 20 * np.sin(dist / 200 + seed)
+        return pd.DataFrame({'distance': dist, 'speed': speed, 'throttle': throttle}), 90.0, 4000.0
     
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d_num})
     if laps.empty: return pd.DataFrame(), 0, 0
     f_lap = laps.sort_values('lap_duration').iloc[0]
-    
     start = pd.to_datetime(f_lap['date_start']).tz_convert('UTC').tz_localize(None)
     tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d_num}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={(start + pd.Timedelta(seconds=float(f_lap['lap_duration']))).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
     if tel.empty: return pd.DataFrame(), f_lap['lap_duration'], 0
@@ -112,30 +114,28 @@ if not meetings.empty:
             m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="normal")
             m5.metric("PIPELINE", "SIM" if sim else "LIVE")
             
-            fig = make_subplots(rows=3, cols=1, shared_xaxes=True)
+            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
+                                subplot_titles=("Time Delta (Seconds)", "Speed Comparison (KM/H)", "Throttle Application (%)"))
+            
             fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta, name="Delta", line=dict(color='#00FF00')), row=1, col=1)
             fig.add_trace(go.Scatter(x=df1['distance'], y=df1['speed'], name=d1_name, line=dict(color='#00FFFF')), row=2, col=1)
             fig.add_trace(go.Scatter(x=df2['distance'], y=df2['speed'], name=d2_name, line=dict(color='#FF00FF')), row=2, col=1)
             fig.add_trace(go.Scatter(x=df1['distance'], y=df1['throttle'], name=d1_name, line=dict(color='#00FFFF'), showlegend=False), row=3, col=1)
             fig.add_trace(go.Scatter(x=df2['distance'], y=df2['throttle'], name=d2_name, line=dict(color='#FF00FF'), showlegend=False), row=3, col=1)
-            fig.update_layout(template="plotly_dark", height=850)
+            
+            fig.update_layout(template="plotly_dark", height=850, showlegend=True)
             st.plotly_chart(fig, use_container_width=True)
 
 # --- GUIDE ---
 with st.expander("🛡️ SYSTEM STATUS & ANALYTICS GUIDE"):
     st.markdown("""
     ### 🏁 How to Read These Plots
-    Whether you're a race engineer or just a fan, here is what the telemetry is telling you:
+    *   **Lap Time Delta:** Negative (Green) = Driver A is faster. Positive (Red) = Driver A is slower. 
+    *   **Spatial Gap:** Cumulative time difference mapped over distance. Positive (Green) means gaining ground; Negative (Red) means losing time.
+    *   **Speed & Throttle:** Spatially synchronized to highlight exact cornering efficiency.
     
-    *   **The Lap Time Delta:** Think of this as the "Gap-o-meter." If the value is **negative and Green**, the driver you've selected is currently faster than the reference. If it's **positive and Red**, they are losing time. 
-    *   **The Spatial Gap:** This shows the *story* of the lap. It doesn't just tell you *if* they are faster, but *where* on the track they are gaining or losing ground. If the line trends upward, they are pulling away; if it drops, they are bleeding time.
-    *   **Synchronized Speed & Throttle:** These plots are "locked" together. If you see a driver brake hard (the Speed line drops), look immediately below to see if they were also off the throttle. It’s the best way to spot a driver who is "over-driving" the car into a corner.
-
-    ---
-
-    ### 🏗️ Behind the Scenes: Data Governance & Engineering
-    *   **Fail-Safe Architecture:** Data from the real world is messy and unreliable. If the live API stops sending data, this app automatically detects the "heartbeat" failure and pivots to a **Simulation Engine**, ensuring your presentation never stops.
-    *   **Spatial Normalization (The "Pro" Fix):** Cars don't cross the finish line at the exact same millisecond. To compare them, we ignore time and map their data to **distance** (the exact meter on the track). We use mathematical interpolation (`numpy`) to create a perfectly aligned "Ghost Car" comparison, even if the sensors logged the data at different sampling rates.
-    *   **Deterministic Simulation:** Our "Simulation Mode" isn't random—it's **deterministic**. We use a unique digital fingerprint (a `CRC32` hash) based on the race and driver to generate consistent, realistic data every time you use it. This means the simulation is always reproducible and physically grounded.
-    *   **Data Integrity:** To keep the connection stable, every request to the server is wrapped in a strict "Time-out" protocol. This prevents the app from hanging if the internet is slow, keeping the dashboard snappy and responsive.
+    ### 🏗️ Engineering & Data Governance
+    *   **Resilient Pipeline:** Includes automatic failover to deterministic simulation if the live API heartbeat fails.
+    *   **Spatial Normalization:** Uses `numpy.interp` to align telemetry streams of varying sample rates across a fixed 4km distance axis.
+    *   **Deterministic Engine:** Simulation uses `zlib.crc32` hashing to provide repeatable, physics-grounded telemetry for testing.
     """)
