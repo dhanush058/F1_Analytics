@@ -27,15 +27,21 @@ st.markdown("""
 <style>
     .stApp { background-color: #0B0B0E; color: #FFFFFF; font-family: 'Segoe UI', sans-serif; }
     [data-testid="stSidebar"] { background-color: #111116; border-right: 2px solid #FF1801; }
-    [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
+    [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 10px; }
     .title-text { font-size: 1.5rem; font-weight: 300; color: #FFFFFF !important; margin-bottom: 20px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. DATA ENGINE ---
+# --- 2. RESILIENT DATA ENGINE ---
+def check_api_health():
+    try:
+        return requests.get("https://api.openf1.org/v1/meetings?year=2024", timeout=5).status_code == 200
+    except: return False
+
 def get_openf1(endpoint, params=None):
     try:
-        res = requests.get(f"https://api.openf1.org/v1/{endpoint}", params=params, timeout=45)
+        headers = {'User-Agent': 'F1-PitWall-Analytics/2.0'}
+        res = requests.get(f"https://api.openf1.org/v1/{endpoint}", params=params, headers=headers, timeout=10)
         return pd.DataFrame(res.json()) if res.status_code == 200 else pd.DataFrame()
     except: return pd.DataFrame()
 
@@ -49,6 +55,7 @@ def get_telemetry(d_num, s_key, year, sim, d_id):
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d_num})
     if laps.empty: return pd.DataFrame(), 0, 0
     f_lap = laps.sort_values('lap_duration').iloc[0]
+    
     start = pd.to_datetime(f_lap['date_start']).tz_convert('UTC').tz_localize(None)
     tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d_num}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={(start + pd.Timedelta(seconds=float(f_lap['lap_duration']))).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
     if tel.empty: return pd.DataFrame(), f_lap['lap_duration'], 0
@@ -60,7 +67,11 @@ def get_telemetry(d_num, s_key, year, sim, d_id):
     return pd.DataFrame({'distance': ref, 'speed': np.interp(ref, tel['dist'], tel['speed']), 'throttle': np.interp(ref, tel['dist'], tel['throttle'])}), f_lap['lap_duration'], tel['dist'].max()
 
 # --- 3. UI & CONTROL ---
+if 'sim_mode' not in st.session_state: st.session_state.sim_mode = False
+
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
+is_api_healthy = check_api_health()
+
 meetings = get_openf1("meetings", {"year": year})
 if not meetings.empty:
     gp_raw = st.sidebar.selectbox("GP", meetings['meeting_name'].unique())
@@ -72,14 +83,22 @@ if not meetings.empty:
     if not drivers.empty:
         d1_name = st.sidebar.selectbox("Driver A", sorted(drivers['full_name'].str.title().unique()))
         d2_name = st.sidebar.selectbox("Ref Driver", sorted(drivers['full_name'].str.title().unique()), index=1)
-        sim = st.sidebar.checkbox("Simulation Mode")
+        sim = st.sidebar.checkbox("Simulation Mode", value=st.session_state.sim_mode)
+        
+        # Diagnostic Check
+        if not is_api_healthy and not sim:
+            st.error("⚠️ API CONNECTION FAILED")
+            st.markdown("The live telemetry server is currently unreachable.")
+            if st.button("Enable Simulation Mode"):
+                st.session_state.sim_mode = True
+                st.rerun()
+            st.stop()
 
-        # Determine City
         city = next((v for k, v in CITY_MAP.items() if k in gp_raw), "Location")
         st.markdown(f"<div class='title-text'>{gp_raw}, {year}, {city}, {s_name}</div>", unsafe_allow_html=True)
 
         d1_n = drivers[drivers['full_name'].str.title()==d1_name]['driver_number'].iloc[0]
-        d2_n = drivers[drivers['full_name'].str.title()==d2_name]['driver_number'].iloc[0]
+        d2_n = drivers[drivers['full_name'].str.title()==d2]['driver_number'].iloc[0]
         df1, lap1, len1 = get_telemetry(d1_n, s_key, year, sim, 1)
         df2, lap2, len2 = get_telemetry(d2_n, s_key, year, sim, 2)
 
@@ -88,9 +107,7 @@ if not meetings.empty:
             delta = np.cumsum((1 / np.maximum(df2['speed'].values[:common]/3.6, 1)) - (1 / np.maximum(df1['speed'].values[:common]/3.6, 1))) * (max(len1, len2)/common)
             
             m1, m2, m3, m4, m5 = st.columns(5)
-            # Velocity difference calculation
             vmax_diff = df1['speed'].max() - df2['speed'].max()
-            
             m1.metric(d1_name.split()[-1].upper(), f"{df1['speed'].max():.0f} KM/H", f"{vmax_diff:+.0f}")
             m2.metric(d2_name.split()[-1].upper(), f"{df2['speed'].max():.0f} KM/H", f"{-vmax_diff:+.0f}")
             m3.metric("LAP DELTA", f"{lap1-lap2:+.3f} S", delta=f"{lap2-lap1:+.3f}", delta_color="inverse")
@@ -107,10 +124,11 @@ if not meetings.empty:
             st.plotly_chart(fig, use_container_width=True)
 
 # --- GUIDE ---
-with st.expander("📖 PIT-WALL ANALYTICS GUIDE"):
+with st.expander("🛡️ SYSTEM STATUS & ANALYTICS GUIDE"):
     st.markdown("""
-    ### 🧠 How to Read These Metrics
-    - **Lap Time Delta:** A negative value (Green) means Driver A is faster.
-    - **Spatial Gap:** Positive (Green) means Driver A is gaining ground; Negative (Red) means they are losing time.
-    - **VMAX Delta:** Shows the top-speed advantage for each driver over their opponent.
+    ### 🧠 Data Diagnostics
+    - **Fail-Safe Architecture:** If the live stream is interrupted, the system automatically detects the outage and allows a seamless switch to **Simulation Mode**.
+    - **Lap Time Delta:** Negative (Green) = Driver A is faster.
+    - **Spatial Gap:** Positive (Green) = Driver A is gaining ground.
+    - **Simulation Pipeline:** Uses deterministic physics modeling to ensure uninterrupted analysis.
     """)
