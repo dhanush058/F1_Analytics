@@ -17,9 +17,9 @@ CITY_MAP = {
     "Hungarian Grand Prix": "Budapest", "Dutch Grand Prix": "Zandvoort",
     "Italian Grand Prix": "Monza", "Azerbaijan Grand Prix": "Baku",
     "Singapore Grand Prix": "Singapore", "United States Grand Prix": "Austin",
-    "Mexican Grand Prix": "Mexico City", "Sao Paulo Grand Prix": "São Paulo",
-    "Las Vegas Grand Prix": "Las Vegas", "Qatar Grand Prix": "Lusail",
-    "Abu Dhabi Grand Prix": "Yas Island"
+    "United States Grand Prix": "Austin", "Mexican Grand Prix": "Mexico City", 
+    "Sao Paulo Grand Prix": "São Paulo", "Las Vegas Grand Prix": "Las Vegas", 
+    "Qatar Grand Prix": "Lusail", "Abu Dhabi Grand Prix": "Yas Island"
 }
 
 st.set_page_config(layout="wide", page_title="F1 Analytics: Pit-Wall")
@@ -124,13 +124,18 @@ if not meetings.empty:
 # --- GUIDE ---
 with st.expander("🛡️ SYSTEM STATUS & ANALYTICS GUIDE"):
     st.markdown("""
-    ### 🧠 Interpreting the Analytics
-    * **Lap Time Delta:** Shows the comparative lap time. **Negative (Green)** indicates the driver is faster; **Positive (Red)** indicates the driver is slower.
-    * **Spatial Gap:** The cumulative time advantage/loss mapped over track distance. **Positive (Green)** indicates a time gain; **Negative (Red)** indicates a time loss.
-    * **Plot Synchronization:** Speed and throttle traces are **spatially normalized**. This ensures that braking points (speed drops) align perfectly with throttle lifts (throttle drops) at the exact same meter on the track.
+    ### 🏁 How to Read These Plots
+    Whether you're a race engineer or just a fan, here is what the telemetry is telling you:
     
-    ### 🏗️ Engineering & Data Governance
-    * **Spatial Normalization Pipeline:** Because F1 data comes from sensors at different sample rates, we map all time-series telemetry to a fixed `distance` axis. We use `numpy.interp` to perform linear re-sampling, creating a high-fidelity synthetic comparison between two different data streams.
-    * **Deterministic Simulation Engine:** When live APIs (OpenF1) fail, the app triggers a `zlib.crc32` hash-based simulation model. This ensures deterministic output (the same input always generates the same 'simulated' curve), preventing the UI from breaking or hallucinating data.
-    * **Resilience:** Defensive error handling with `timeout=10s` and custom `User-Agent` headers prevents network bottlenecks and server-side rate-limiting.
+    *   **The Lap Time Delta:** Think of this as the "Gap-o-meter." If the value is **negative and Green**, the driver you've selected is currently faster than the reference. If it's **positive and Red**, they are losing time. 
+    *   **The Spatial Gap:** This shows the *story* of the lap. It doesn't just tell you *if* they are faster, but *where* on the track they are gaining or losing ground. If the line trends upward, they are pulling away; if it drops, they are bleeding time.
+    *   **Synchronized Speed & Throttle:** These plots are "locked" together. If you see a driver brake hard (the Speed line drops), look immediately below to see if they were also off the throttle. It’s the best way to spot a driver who is "over-driving" the car into a corner.
+
+    ---
+
+    ### 🏗️ Behind the Scenes: Data Governance & Engineering
+    *   **Fail-Safe Architecture:** Data from the real world is messy and unreliable. If the live API stops sending data, this app automatically detects the "heartbeat" failure and pivots to a **Simulation Engine**, ensuring your presentation never stops.
+    *   **Spatial Normalization (The "Pro" Fix):** Cars don't cross the finish line at the exact same millisecond. To compare them, we ignore time and map their data to **distance** (the exact meter on the track). We use mathematical interpolation (`numpy`) to create a perfectly aligned "Ghost Car" comparison, even if the sensors logged the data at different sampling rates.
+    *   **Deterministic Simulation:** Our "Simulation Mode" isn't random—it's **deterministic**. We use a unique digital fingerprint (a `CRC32` hash) based on the race and driver to generate consistent, realistic data every time you use it. This means the simulation is always reproducible and physically grounded.
+    *   **Data Integrity:** To keep the connection stable, every request to the server is wrapped in a strict "Time-out" protocol. This prevents the app from hanging if the internet is slow, keeping the dashboard snappy and responsive.
     """)
