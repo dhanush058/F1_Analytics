@@ -69,17 +69,21 @@ COLOR_BG = '#0B0B0E'
 @st.cache_data(ttl=600)
 def get_openf1(endpoint, params=None):
     base_url = "https://api.openf1.org/v1/"
+    # FIX 1: Add a custom User-Agent to bypass API firewalls/403 blocks
+    headers = {
+        "User-Agent": "F1-Telemetry-Dashboard/1.0 (Data Analytics App)",
+        "Accept": "application/json"
+    }
     try:
-        # FIX: Increased timeout to 30s to handle massive historical car_data dumps
-        res = requests.get(base_url + endpoint, params=params, timeout=30)
+        res = requests.get(base_url + endpoint, params=params, headers=headers, timeout=45)
         return pd.DataFrame(res.json()) if res.status_code == 200 else pd.DataFrame()
-    except:
+    except Exception as e:
         return pd.DataFrame()
 
 # --- 3. DATA ENGINE (REAL LIVE DATA & ADVANCED DYNAMIC PHYSICS SIM) ---
 def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, year, is_sim=False, driver_id=1):
     if is_sim:
-        # FIX: Cryptographic String Hashing ensures 0% chance of data overlap
+        # Cryptographic String Hashing ensures 0% chance of data overlap
         track_uid = f"{year}_{track_name}_{s_key}"
         driver_uid = f"{year}_{track_name}_{s_key}_{driver_api_name}_{driver_id}"
         
@@ -141,7 +145,6 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
 
     # === REAL DATA FETCHING LOGIC (100% Accurate API Data) ===
     
-    # FIX: Explicitly cast driver_number to integer 
     try:
         d_num = int(drivers_df[drivers_df['full_name'] == driver_api_name]['driver_number'].iloc[0])
     except (ValueError, TypeError):
@@ -158,18 +161,19 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
     
     fastest_lap = valid_laps.loc[valid_laps['lap_duration'].idxmin()]
     
-    # FIX: Safely parse datetime and strip timezone offsets to pure UTC
     start_time = pd.to_datetime(fastest_lap['date_start'])
     if start_time.tzinfo is not None:
         start_time = start_time.tz_convert('UTC').tz_localize(None)
         
     end_time = start_time + pd.Timedelta(seconds=float(fastest_lap['lap_duration']) + 0.5)
     
-    # FIX: Keep full microseconds (%f) to match OpenF1 database indexing perfectly
-    start_str = start_time.strftime('%Y-%m-%dT%H:%M:%S.%f')
-    end_str = end_time.strftime('%Y-%m-%dT%H:%M:%S.%f')
+    # FIX 2: Enforce strict milliseconds ([:-3]) so the OpenF1 database doesn't reject the query
+    start_str = start_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
+    end_str = end_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
     
-    tel = get_openf1("car_data", {"session_key": s_key, "driver_number": d_num, "date>=": start_str, "date<=": end_str})
+    # FIX 3: Manually build the car_data URL to bypass 'requests' dict url-encoding corruption on the ">=" symbols
+    car_endpoint = f"car_data?session_key={s_key}&driver_number={d_num}&date>={start_str}&date<={end_str}"
+    tel = get_openf1(car_endpoint) # Notice we pass it as a raw string, not a dictionary
     
     if tel.empty or 'speed' not in tel.columns: 
         return pd.DataFrame(), fastest_lap['lap_duration'], 0
@@ -178,6 +182,9 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
     tel['throttle'] = pd.to_numeric(tel['throttle'], errors='coerce')
     tel = tel.dropna(subset=['speed', 'throttle', 'date'])
     
+    if tel.empty:
+        return pd.DataFrame(), fastest_lap['lap_duration'], 0
+        
     tel['date'] = pd.to_datetime(tel['date'])
     tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0.0)
     
