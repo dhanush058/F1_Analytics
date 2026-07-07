@@ -7,45 +7,32 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # --- 1. CONFIG & THEME ---
-# Mapping GP names to their host cities
 CITY_MAP = {
-    "Australian Grand Prix": "Melbourne",
-    "Chinese Grand Prix": "Shanghai",
-    "Japanese Grand Prix": "Suzuka",
-    "Bahrain Grand Prix": "Sakhir",
-    "Saudi Arabian Grand Prix": "Jeddah",
-    "Miami Grand Prix": "Miami",
-    "Canadian Grand Prix": "Montreal",
-    "Monaco Grand Prix": "Monte-Carlo",
-    "Spanish Grand Prix": "Barcelona",
-    "Austrian Grand Prix": "Spielberg",
-    "British Grand Prix": "Silverstone",
-    "Belgian Grand Prix": "Spa-Francorchamps",
-    "Hungarian Grand Prix": "Budapest",
-    "Dutch Grand Prix": "Zandvoort",
-    "Italian Grand Prix": "Monza",
-    "Azerbaijan Grand Prix": "Baku",
-    "Singapore Grand Prix": "Singapore",
-    "United States Grand Prix": "Austin",
-    "Mexican Grand Prix": "Mexico City",
-    "Sao Paulo Grand Prix": "São Paulo",
-    "Las Vegas Grand Prix": "Las Vegas",
-    "Qatar Grand Prix": "Lusail",
+    "Australian Grand Prix": "Melbourne", "Chinese Grand Prix": "Shanghai",
+    "Japanese Grand Prix": "Suzuka", "Bahrain Grand Prix": "Sakhir",
+    "Saudi Arabian Grand Prix": "Jeddah", "Miami Grand Prix": "Miami",
+    "Canadian Grand Prix": "Montreal", "Monaco Grand Prix": "Monte-Carlo",
+    "Spanish Grand Prix": "Barcelona", "Austrian Grand Prix": "Spielberg",
+    "British Grand Prix": "Silverstone", "Belgian Grand Prix": "Spa-Francorchamps",
+    "Hungarian Grand Prix": "Budapest", "Dutch Grand Prix": "Zandvoort",
+    "Italian Grand Prix": "Monza", "Azerbaijan Grand Prix": "Baku",
+    "Singapore Grand Prix": "Singapore", "United States Grand Prix": "Austin",
+    "Mexican Grand Prix": "Mexico City", "Sao Paulo Grand Prix": "São Paulo",
+    "Las Vegas Grand Prix": "Las Vegas", "Qatar Grand Prix": "Lusail",
     "Abu Dhabi Grand Prix": "Yas Island"
 }
 
 st.set_page_config(layout="wide", page_title="F1 Analytics: Pit-Wall")
 st.markdown("""
 <style>
-    .stApp { background-color: #0B0B0E; color: #FFFFFF; font-family: 'Inter', sans-serif; }
+    .stApp { background-color: #0B0B0E; color: #FFFFFF; font-family: 'Segoe UI', sans-serif; }
     [data-testid="stSidebar"] { background-color: #111116; border-right: 2px solid #FF1801; }
-    [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
-    .title-box { padding: 5px; border-left: 5px solid #FF1801; margin-bottom: 25px; padding-left: 15px; }
-    h1 { font-family: 'Inter', sans-serif !important; font-weight: 800; font-size: 2.5rem; letter-spacing: -0.05em; color: #FFFFFF !important; }
+    [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 10px; }
+    .title-text { font-size: 1.5rem; font-weight: 300; color: #FFFFFF !important; margin-bottom: 15px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. DATA FETCHING ---
+# --- 2. DATA ENGINE ---
 def get_openf1(endpoint, params=None):
     try:
         res = requests.get(f"https://api.openf1.org/v1/{endpoint}", params=params, timeout=45)
@@ -89,9 +76,8 @@ if not meetings.empty:
         d1, d2 = st.sidebar.selectbox("Driver A", sorted(drivers['full_name'].str.title().unique())), st.sidebar.selectbox("Ref Driver", sorted(drivers['full_name'].str.title().unique()), index=1)
         sim = st.sidebar.checkbox("Simulation Mode")
 
-        # Determine City
-        city = next((v for k, v in CITY_MAP.items() if k in gp_raw), "Unknown City")
-        st.markdown(f"<div class='title-box'><h1>{gp_raw} {year} | {city} | {s_name}</h1></div>", unsafe_allow_html=True)
+        city = next((v for k, v in CITY_MAP.items() if k in gp_raw), "Location")
+        st.markdown(f"<div class='title-text'>{gp_raw}, {year}, {city}, {s_name}</div>", unsafe_allow_html=True)
 
         d1_n = drivers[drivers['full_name'].str.title()==d1]['driver_number'].iloc[0]
         d2_n = drivers[drivers['full_name'].str.title()==d2]['driver_number'].iloc[0]
@@ -124,7 +110,6 @@ with st.expander("📖 PIT-WALL ANALYTICS GUIDE"):
     st.markdown("""
     ### 🧠 How to Read These Metrics
     - **Lap Time Delta:** A **negative value (Green)** means Driver A is faster. A **positive value (Red)** means they are slower.
-    - **Spatial Gap:** The cumulative time difference between drivers. **Positive (Green)** means Driver A is gaining time against the Reference driver; **Negative (Red)** means they are losing ground.
-    - **Spatial Normalization:** Since cars cross the finish line at different times, we map data to **distance** so that we compare both drivers at the exact same physical meter on the track.
-    - **Pipeline Status:** Indicates if you are viewing live race telemetry or our physics-based **Simulation Mode**.
+    - **Spatial Gap:** The cumulative time difference between drivers. **Positive (Green)** means Driver A is gaining time; **Negative (Red)** means they are losing ground.
+    - **Pipeline Status:** Indicates if you are viewing live telemetry or our **Simulation Mode**.
     """)
