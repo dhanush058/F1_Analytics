@@ -29,7 +29,8 @@ st.markdown("""
     [data-testid="stSidebar"] { background-color: #111116; border-right: 2px solid #FF1801; }
     [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
     [data-testid="stMetricLabel"] { color: #FF1801 !important; font-weight: 500; }
-    .title-text { font-size: 1.3rem; color: #FF1801 !important; margin-bottom: 25px; font-weight: 500; }
+    .main-title { text-align: center; font-size: 2rem; color: #FFFFFF; margin-bottom: 10px; font-weight: 500; }
+    .subtitle-text { text-align: center; font-size: 1.1rem; color: #FF1801 !important; margin-bottom: 25px; font-weight: 500; }
     h2, h3 { color: #FF1801 !important; font-weight: 500; font-size: 1.1rem; }
 </style>
 """, unsafe_allow_html=True)
@@ -79,6 +80,8 @@ year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
 api_healthy = check_api_health()
 meetings = get_openf1("meetings", {"year": year})
 
+st.markdown("<div class='main-title'>Formula 1 Telemetry Analysis</div>", unsafe_allow_html=True)
+
 if not meetings.empty:
     gp_raw = st.sidebar.selectbox("GP", meetings['meeting_name'].unique())
     s_data = get_openf1("sessions", {"meeting_key": meetings[meetings['meeting_name'] == gp_raw]['meeting_key'].iloc[0]})
@@ -96,7 +99,7 @@ if not meetings.empty:
             st.stop()
         
         city = CITY_MAP.get(gp_raw, "Global Circuit")
-        st.markdown(f"<div class='title-text'>{gp_raw.upper()}, {city.upper()}, {year}, {s_name.upper()}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='subtitle-text'>{gp_raw.upper()}, {city.upper()}, {year}, {s_name.upper()}</div>", unsafe_allow_html=True)
         
         d1_n = drivers[drivers['full_name'].str.title() == d1_name]['driver_number'].iloc[0]
         d2_n = drivers[drivers['full_name'].str.title() == d2_name]['driver_number'].iloc[0]
