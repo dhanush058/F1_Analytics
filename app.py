@@ -29,7 +29,8 @@ st.markdown("""
     [data-testid="stSidebar"] { background-color: #111116; border-right: 2px solid #FF1801; }
     [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
     [data-testid="stMetricLabel"] { color: #FF1801 !important; font-weight: bold; }
-    .title-text { font-size: 1.5rem; color: #FFFFFF !important; margin-bottom: 25px; }
+    .title-text { font-size: 1.8rem; color: #FF1801 !important; margin-bottom: 25px; font-weight: 700; }
+    h2, h3 { color: #FF1801 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -95,7 +96,7 @@ if not meetings.empty:
             st.stop()
         
         city = CITY_MAP.get(gp_raw, "Global Circuit")
-        st.markdown(f"<div class='title-text'>{gp_raw}, {city}, {year}, {s_name}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='title-text'>{gp_raw.upper()}, {city.upper()}, {year}, {s_name.upper()}</div>", unsafe_allow_html=True)
         
         d1_n = drivers[drivers['full_name'].str.title() == d1_name]['driver_number'].iloc[0]
         d2_n = drivers[drivers['full_name'].str.title() == d2_name]['driver_number'].iloc[0]
@@ -114,32 +115,31 @@ if not meetings.empty:
             m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="normal")
             m5.metric("PIPELINE", "SIM" if sim else "LIVE")
 
-            # --- PLOT BOXES ---
             titles = ["Time Delta", "Speed Comparison", "Throttle Application"]
             y_labels = ["Delta (s)", "Speed (km/h)", "Throttle (%)"]
             for i, title in enumerate(titles):
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta if i==0 else df1.iloc[:, i], name=d1_name, line=dict(color='#00FFFF')))
                 if i > 0: fig.add_trace(go.Scatter(x=df2['distance'], y=df2.iloc[:, i], name=d2_name, line=dict(color='#FF00FF')))
-                fig.update_layout(title=dict(text=title, x=0.05, font=dict(color='#FF1801')), xaxis=dict(title="Distance (m)"), yaxis=dict(title=y_labels[i]), template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40))
+                fig.update_layout(title=dict(text=title, x=0.05, font=dict(color='#FF1801', size=20)), xaxis=dict(title="Distance (m)"), yaxis=dict(title=y_labels[i]), template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40))
                 st.plotly_chart(fig, use_container_width=True)
 
 with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
     st.markdown("""
-    ### 1. Understanding the Metrics
-    - **Driver Max Speed:** Peak velocity achieved in the fastest lap. The sub-metric shows the speed advantage (+) or disadvantage (-) against the reference.
-    - **Lap Delta:** The total difference in lap completion time between the two drivers. Green/Red indicators show performance relative to the reference.
-    - **Spatial Gap:** Shows the cumulative time difference across the track. This helps identify precisely *where* a driver is gaining or losing time (e.g., in corners vs. straights).
-    
-    ### 2. How to Read the Plots
-    - **Time Delta Plot:** Green curves indicate where your chosen driver is gaining time; negative values show superiority.
-    - **Speed & Throttle Plots:** These are synchronized by track distance, not time. Use these to correlate braking points and corner exit speed—look for where one driver "dips" their speed compared to the other.
-    
-    ### 3. Technical Explanation
-    - **Spatial Normalization:** Since telemetry is sampled at different rates, we use `numpy.interp` to map all data points onto a standardized 4km distance axis. This creates a "Ghost Car" effect for accurate comparison.
-    - **Simulation Engine:** Uses `zlib.crc32` to generate deterministic "telemetry fingerprints." This ensures that the simulation remains high-fidelity, repeatable, and physics-grounded.
-    
-    ### 4. Data Governance
-    - **Fail-Safe Pipeline:** The system performs a live API handshake. If data is unreachable, it forces a transition to a simulated environment to preserve dashboard availability.
-    - **Data Integrity:** All API calls use dedicated headers and timeout constraints to prevent network bottlenecks and ensure the reliability of the analytical stream.
+    ### 🏁 How to Read These Plots
+    - **Time Delta:** A negative value (Green) means your primary driver is pulling away. If it's positive (Red), they are losing time.
+    - **Spatial Gap:** This shows the net time difference across the whole track. Think of this as the "Ghost Car" gap—a positive slope means you're gaining ground, while a dip shows where you're bleeding time.
+    - **Telemetry:** These plots are synced to distance, not time. This is how engineers find the exact corner where a driver is braking too early or missing the exit power.
+
+    ### 🛠️ What These Metrics Mean
+    - **Lap Delta:** The bottom line—how many seconds faster or slower the driver is compared to the benchmark.
+    - **Spatial Gap:** Your diagnostic tool. If you lose time on a straight, it's usually engine/aero. If you lose it in a corner, it's usually a braking or entry error.
+
+    ### 🏗️ Technical Architecture
+    - **The Pipeline:** We built this to be "pit-wall proof." If the live API heartbeat stops, the app automatically switches to a high-fidelity simulation. This keeps the dashboard alive even if the data source goes dark.
+    - **Normalization:** Raw F1 sensor data is messy and comes in at different speeds. We use `numpy.interp` to smooth it out onto a fixed 4km track distance, creating a perfect apple-to-apple comparison.
+
+    ### 🛡️ Data Governance
+    - **Fail-Safe Logic:** Every request has a strict timeout. We never want a slow server to hang the entire UI.
+    - **Deterministic Simulation:** We don't use "random" numbers. By hashing the `session_key` and `driver_id` with `zlib.crc32`, we generate a unique, repeatable "telemetry fingerprint" every time you run a simulation. It's essentially "fake data" that is physically consistent.
     """)
