@@ -30,7 +30,7 @@ st.markdown("""
     [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
     [data-testid="stMetricLabel"] { color: #FF1801 !important; font-weight: 500; }
     .title-text { font-size: 1.3rem; color: #FF1801 !important; margin-bottom: 25px; font-weight: 500; }
-    h2, h3 { color: #FF1801 !important; font-weight: 500; font-size: 1.2rem; }
+    h2, h3 { color: #FF1801 !important; font-weight: 500; font-size: 1.1rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -121,25 +121,25 @@ if not meetings.empty:
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta if i==0 else df1.iloc[:, i], name=d1_name, line=dict(color='#00FFFF')))
                 if i > 0: fig.add_trace(go.Scatter(x=df2['distance'], y=df2.iloc[:, i], name=d2_name, line=dict(color='#FF00FF')))
-                fig.update_layout(title=dict(text=title, x=0.05, font=dict(color='#FF1801', size=16, family="Segoe UI")), xaxis=dict(title="Distance (m)"), yaxis=dict(title=y_labels[i]), template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40))
+                fig.update_layout(title=dict(text=title, x=0.05, font=dict(color='#FF1801', size=14, family="Segoe UI")), xaxis=dict(title="Distance (m)"), yaxis=dict(title=y_labels[i]), template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40))
                 st.plotly_chart(fig, use_container_width=True)
 
 with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
     st.markdown("""
-    ### How to Read These Plots
+    ### How to Read These Plots:
     - Time Delta: A negative value (Green) means your primary driver is pulling away. Positive (Red) means they are losing time.
-    - Spatial Gap: This shows the net time difference across the whole track, helping you visualize where you're gaining or bleeding time.
-    - Telemetry: These are synced to distance, not time. This is how engineers find exactly where a driver brakes too early or misses the power.
+    - Spatial Gap: This shows the net time difference across the whole track. Think of this as the "Ghost Car" gap—a positive slope means you're gaining ground, while a dip shows where you're bleeding time.
+    - Telemetry: These plots are synced to distance, not time. This is how engineers find exactly where a driver is braking too early or missing the exit power.
 
-    ### Metric Breakdown
-    - Lap Delta: The ultimate performance indicator: seconds faster or slower than the benchmark.
+    ### Metric Breakdown:
+    - Lap Delta: The bottom line—how many seconds faster or slower the driver is compared to the benchmark.
     - Spatial Gap: Your diagnostic tool. If you lose time on a straight, it's usually engine/aero. If you lose it in a corner, look for entry or braking errors.
 
-    ### Technical Architecture
+    ### Technical Architecture:
     - The Pipeline: Built to be "pit-wall proof." If the live API heartbeat stops, the app automatically pivots to a high-fidelity simulation, keeping the dashboard alive.
     - Normalization: We use `numpy.interp` to map messy F1 sensor data onto a fixed 4km track distance for a perfect apple-to-apple comparison.
 
-    ### Data Governance
+    ### Data Governance:
     - Fail-Safe Logic: Every request has a strict timeout, so a slow server never hangs your UI.
-    - Deterministic Simulation: We hash `session_key` and `driver_id` with `zlib.crc32` to generate a repeatable, physically-consistent "telemetry fingerprint."
+    - Deterministic Simulation: We hash `session_key` and `driver_id` with `zlib.crc32` to generate a unique, repeatable "telemetry fingerprint."
     """)
