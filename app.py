@@ -165,19 +165,17 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
     if start_time.tzinfo is not None:
         start_time = start_time.tz_convert('UTC').tz_localize(None)
         
-    # FIX: Add a safe timing window padding (-0.5s and +0.5s) to guarantee server data alignment
     start_window = start_time - pd.Timedelta(seconds=0.5)
     end_window = start_time + pd.Timedelta(seconds=float(fastest_lap['lap_duration']) + 0.5)
     
     start_str = start_window.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
     end_str = end_window.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
     
-    tel = get_openf1("car_data", {
-        "session_key": s_key, 
-        "driver_number": d_num, 
-        "date>=": start_str, 
-        "date<=": end_str
-    })
+    # FIX: Build the raw string directly so requests DOES NOT encode >= into %3E%3D
+    car_endpoint = f"car_data?session_key={s_key}&driver_number={d_num}&date>={start_str}&date<={end_str}"
+    
+    # Notice we pass the raw string with NO dictionary to prevent corruption
+    tel = get_openf1(car_endpoint)
     
     if tel.empty or 'speed' not in tel.columns: 
         return pd.DataFrame(), fastest_lap['lap_duration'], 0
