@@ -28,7 +28,7 @@ st.markdown("""
     .stApp { background-color: #0B0B0E; color: #FFFFFF; font-family: 'Segoe UI', sans-serif; }
     [data-testid="stSidebar"] { background-color: #111116; border-right: 2px solid #FF1801; }
     [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
-    .title-text { font-size: 1.5rem; color: #FFFFFF !important; margin-bottom: 25px; }
+    .title-text { font-size: 1.5rem; color: #FF1801 !important; margin-bottom: 25px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -61,7 +61,6 @@ def get_telemetry(d1_n, d2_n, s_key, sim, d_id, offset=0):
     end = start + pd.Timedelta(seconds=float(f_lap['lap_duration']))
     tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d1_n}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={end.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
     
-    # Robust safety check using try-except to handle malformed date parsing
     try:
         if tel.empty or 'date' not in tel.columns: return pd.DataFrame(), f_lap['lap_duration'], 0
         tel['date'] = pd.to_datetime(tel['date'])
@@ -115,6 +114,11 @@ if not meetings.empty:
             m5.metric("PIPELINE", "SIM" if sim else "LIVE")
 
             fig = make_subplots(rows=3, cols=1, shared_xaxes=True, subplot_titles=("Time Delta", "Speed Comparison (KM/H)", "Throttle Application (%)"))
+            # Apply Red font color to all subplot titles
+            fig.layout.annotations[0].update(font=dict(color='#FF1801'))
+            fig.layout.annotations[1].update(font=dict(color='#FF1801'))
+            fig.layout.annotations[2].update(font=dict(color='#FF1801'))
+            
             fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta, name="Delta", line=dict(color='#00FF00')), row=1, col=1)
             fig.add_trace(go.Scatter(x=df1['distance'], y=df1['speed'], name=d1_name, line=dict(color='#00FFFF')), row=2, col=1)
             fig.add_trace(go.Scatter(x=df2['distance'], y=df2['speed'], name=d2_name, line=dict(color='#FF00FF')), row=2, col=1)
