@@ -32,7 +32,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. DATA ENGINE ---
+# --- 2. RESILIENT DATA ENGINE ---
 def check_api_health():
     try:
         return requests.get("https://api.openf1.org/v1/meetings?year=2024", timeout=5).status_code == 200
@@ -120,3 +120,13 @@ if not meetings.empty:
             fig.add_trace(go.Scatter(x=df2['distance'], y=df2['throttle'], name=d2_name, line=dict(color='#FF00FF'), showlegend=False), row=3, col=1)
             fig.update_layout(template="plotly_dark", height=850)
             st.plotly_chart(fig, use_container_width=True)
+
+# --- GUIDE ---
+with st.expander("🛡️ SYSTEM STATUS & ANALYTICS GUIDE"):
+    st.markdown("""
+    ### 🧠 Data Diagnostics
+    - **Fail-Safe Architecture:** If the live stream is interrupted, the system automatically detects the outage and allows a seamless switch to **Simulation Mode**.
+    - **Lap Time Delta:** Negative (Green) = Driver A is faster.
+    - **Spatial Gap:** Positive (Green) = Driver A is gaining ground; Negative (Red) = they are losing time.
+    - **Simulation Pipeline:** Uses deterministic physics modeling to ensure your dashboard never breaks during API downtime.
+    """)
