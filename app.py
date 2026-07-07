@@ -28,7 +28,6 @@ st.markdown("""
     .stApp { background-color: #0B0B0E; color: #FFFFFF; font-family: 'Segoe UI', sans-serif; }
     [data-testid="stSidebar"] { background-color: #111116; border-right: 2px solid #FF1801; }
     [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
-    /* Target only the metric label (title) to be F1 Red */
     [data-testid="stMetricLabel"] { color: #FF1801 !important; font-weight: bold; }
     .title-text { font-size: 1.5rem; color: #FFFFFF !important; margin-bottom: 25px; }
 </style>
@@ -115,15 +114,20 @@ if not meetings.empty:
             m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="normal")
             m5.metric("PIPELINE", "SIM" if sim else "LIVE")
 
-            # --- SEPARATE PLOT BOXES ---
-            plots = [("Time Delta (S)", delta), ("Speed Comparison (KM/H)", df1['speed']), ("Throttle (%)", df1['throttle'])]
-            titles = ["Time Delta", "Speed Comparison", "Throttle Application"]
+            titles = ["Time Delta (s)", "Speed (km/h)", "Throttle (%)"]
+            y_labels = ["Delta (s)", "Speed (km/h)", "Throttle (%)"]
+            data_cols = [delta, df1['speed'], df1['throttle']]
             
             for i in range(3):
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta if i==0 else df1.iloc[:, i], name=d1_name, line=dict(color='#00FFFF')))
-                if i > 0: fig.add_trace(go.Scatter(x=df2['distance'], y=df2.iloc[:, i], name=d2_name, line=dict(color='#FF00FF')))
-                fig.update_layout(title=titles[i], title_font_color="#FF1801", template="plotly_dark", height=300, margin=dict(l=20, r=20, t=40, b=20))
+                fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta if i==0 else df1.iloc[:, i+1], name=d1_name, line=dict(color='#00FFFF')))
+                if i > 0: fig.add_trace(go.Scatter(x=df2['distance'], y=df2.iloc[:, i+1], name=d2_name, line=dict(color='#FF00FF')))
+                
+                fig.update_layout(
+                    title=dict(text=titles[i], x=0.05, font=dict(color='#FF1801')),
+                    xaxis=dict(title="Distance (m)"), yaxis=dict(title=y_labels[i]),
+                    template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40)
+                )
                 st.plotly_chart(fig, use_container_width=True)
 
 with st.expander("📖 PIT-WALL ANALYTICS: USER & TECHNICAL GUIDE"):
