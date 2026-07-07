@@ -28,8 +28,9 @@ st.markdown("""
     .stApp { background-color: #0B0B0E; color: #FFFFFF; font-family: 'Segoe UI', sans-serif; }
     [data-testid="stSidebar"] { background-color: #111116; border-right: 2px solid #FF1801; }
     [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
-    .title-text { font-size: 1.5rem; color: #FF1801 !important; margin-bottom: 25px; }
-    div[data-testid="stMetricValue"] { color: #FF1801 !important; }
+    /* Target only the metric label (title) to be F1 Red */
+    [data-testid="stMetricLabel"] { color: #FF1801 !important; font-weight: bold; }
+    .title-text { font-size: 1.5rem; color: #FFFFFF !important; margin-bottom: 25px; }
 </style>
 """, unsafe_allow_html=True)
 
