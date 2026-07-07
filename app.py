@@ -70,13 +70,13 @@ COLOR_BG = '#0B0B0E'
 def get_openf1(endpoint, params=None):
     base_url = "https://api.openf1.org/v1/"
     try:
-        res = requests.get(base_url + endpoint, params=params, timeout=12)
+        # FIX: Increased timeout to 30s to handle massive historical car_data dumps
+        res = requests.get(base_url + endpoint, params=params, timeout=30)
         return pd.DataFrame(res.json()) if res.status_code == 200 else pd.DataFrame()
     except:
         return pd.DataFrame()
 
 # --- 3. DATA ENGINE (REAL LIVE DATA & ADVANCED DYNAMIC PHYSICS SIM) ---
-# FIX: Added 'year' to the function signature to guarantee unique session hashes
 def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, year, is_sim=False, driver_id=1):
     if is_sim:
         # FIX: Cryptographic String Hashing ensures 0% chance of data overlap
@@ -139,23 +139,40 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
         lap_time = base_lap_time + (driver_seed % 400) / 200.0
         return pd.DataFrame({'distance': dist_ref, 'speed': speed, 'throttle': throttle}), lap_time, track_length
 
-    # REAL DATA FETCHING LOGIC (100% Accurate API Data)
-    d_num = drivers_df[drivers_df['full_name'] == driver_api_name]['driver_number'].iloc[0]
+    # === REAL DATA FETCHING LOGIC (100% Accurate API Data) ===
+    
+    # FIX: Explicitly cast driver_number to integer 
+    try:
+        d_num = int(drivers_df[drivers_df['full_name'] == driver_api_name]['driver_number'].iloc[0])
+    except (ValueError, TypeError):
+        return pd.DataFrame(), None, 0
+
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d_num})
     
-    if laps.empty or 'lap_duration' not in laps.columns: return pd.DataFrame(), None, 0
-    valid_laps = laps.dropna(subset=['lap_duration'])
-    if valid_laps.empty: return pd.DataFrame(), None, 0
+    if laps.empty or 'lap_duration' not in laps.columns or 'date_start' not in laps.columns: 
+        return pd.DataFrame(), None, 0
+        
+    valid_laps = laps.dropna(subset=['lap_duration', 'date_start'])
+    if valid_laps.empty: 
+        return pd.DataFrame(), None, 0
     
     fastest_lap = valid_laps.loc[valid_laps['lap_duration'].idxmin()]
+    
+    # FIX: Safely parse datetime and strip timezone offsets to pure UTC
     start_time = pd.to_datetime(fastest_lap['date_start'])
+    if start_time.tzinfo is not None:
+        start_time = start_time.tz_convert('UTC').tz_localize(None)
+        
     end_time = start_time + pd.Timedelta(seconds=float(fastest_lap['lap_duration']) + 0.5)
     
-    start_str = start_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
-    end_str = end_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
+    # FIX: Keep full microseconds (%f) to match OpenF1 database indexing perfectly
+    start_str = start_time.strftime('%Y-%m-%dT%H:%M:%S.%f')
+    end_str = end_time.strftime('%Y-%m-%dT%H:%M:%S.%f')
     
     tel = get_openf1("car_data", {"session_key": s_key, "driver_number": d_num, "date>=": start_str, "date<=": end_str})
-    if tel.empty or 'speed' not in tel.columns: return pd.DataFrame(), fastest_lap['lap_duration'], 0
+    
+    if tel.empty or 'speed' not in tel.columns: 
+        return pd.DataFrame(), fastest_lap['lap_duration'], 0
         
     tel['speed'] = pd.to_numeric(tel['speed'], errors='coerce')
     tel['throttle'] = pd.to_numeric(tel['throttle'], errors='coerce')
@@ -163,6 +180,8 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
     
     tel['date'] = pd.to_datetime(tel['date'])
     tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0.0)
+    
+    # Mathematical integration to find physical distance
     tel['distance_raw'] = (tel['speed'] / 3.6) * tel['dt'] 
     tel['distance_raw'] = tel['distance_raw'].cumsum()
     
@@ -210,7 +229,6 @@ d2_api = drivers_data[drivers_data['display_name'] == d2_display]['full_name'].i
 
 # --- 5. COMPUTE ENGINE ---
 with st.spinner("Analyzing Lap Metrics..."):
-    # FIX: Passed 'year' into the functions
     df_a, lap_time_a, len_a = get_telemetry(d1_api, s_key, drivers_data, selected_gp, selected_session, year, sim_mode, driver_id=1)
     df_b, lap_time_b, len_b = get_telemetry(d2_api, s_key, drivers_data, selected_gp, selected_session, year, sim_mode, driver_id=2)
 
