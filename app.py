@@ -57,23 +57,30 @@ def get_telemetry(d1_n, d2_n, s_key, sim, d_id, offset=0):
         return pd.DataFrame({'distance': dist, 'speed': speed, 'throttle': throttle}), 85.0, 4000.0
     
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d1_n})
-    if laps.empty: return pd.DataFrame(), 0, 0
+    # Check if laps exist and have a valid duration
+    if laps.empty or 'lap_duration' not in laps.columns: return pd.DataFrame(), 0, 0
     f_lap = laps.sort_values('lap_duration').iloc[0]
     
+    # Defensive check: ensure lap_duration is numeric
+    try:
+        duration = float(f_lap['lap_duration'])
+    except (TypeError, ValueError):
+        return pd.DataFrame(), 0, 0
+    
     start = pd.to_datetime(f_lap['date_start']).tz_convert('UTC').tz_localize(None)
-    end = start + pd.Timedelta(seconds=float(f_lap['lap_duration']))
+    end = start + pd.Timedelta(seconds=duration)
     tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d1_n}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={end.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
     
     try:
-        if tel.empty or 'date' not in tel.columns: return pd.DataFrame(), f_lap['lap_duration'], 0
+        if tel.empty or 'date' not in tel.columns: return pd.DataFrame(), duration, 0
         tel['date'] = pd.to_datetime(tel['date'])
         tel = tel.sort_values('date')
         tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0)
         tel['dist'] = ((tel['speed']/3.6) * tel['dt']).cumsum()
         ref = np.linspace(0, tel['dist'].max() if tel['dist'].max() > 0 else 4000.0, 1000)
-        return pd.DataFrame({'distance': ref, 'speed': np.interp(ref, tel['dist'], tel['speed']), 'throttle': np.interp(ref, tel['dist'], tel['throttle'])}), f_lap['lap_duration'], tel['dist'].max()
+        return pd.DataFrame({'distance': ref, 'speed': np.interp(ref, tel['dist'], tel['speed']), 'throttle': np.interp(ref, tel['dist'], tel['throttle'])}), duration, tel['dist'].max()
     except Exception:
-        return pd.DataFrame(), f_lap['lap_duration'], 0
+        return pd.DataFrame(), duration, 0
 
 # --- 3. UI & CONTROL ---
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
