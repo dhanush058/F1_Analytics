@@ -28,9 +28,10 @@ st.markdown("""
     .stApp { background-color: #0B0B0E; color: #FFFFFF; font-family: 'Segoe UI', sans-serif; }
     [data-testid="stSidebar"] { background-color: #111116; border-right: 2px solid #FF1801; }
     [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
-    [data-testid="stMetricLabel"] { color: #FF1801 !important; font-weight: bold; }
-    .title-text { font-size: 1.8rem; color: #FF1801 !important; margin-bottom: 25px; font-weight: 700; }
-    h2, h3 { color: #FF1801 !important; }
+    /* Remove Bold styling, set to medium weight */
+    [data-testid="stMetricLabel"] { color: #FF1801 !important; font-weight: 500; }
+    .title-text { font-size: 1.5rem; color: #FF1801 !important; margin-bottom: 25px; font-weight: 500; }
+    h2, h3 { color: #FF1801 !important; font-weight: 500; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -121,7 +122,7 @@ if not meetings.empty:
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta if i==0 else df1.iloc[:, i], name=d1_name, line=dict(color='#00FFFF')))
                 if i > 0: fig.add_trace(go.Scatter(x=df2['distance'], y=df2.iloc[:, i], name=d2_name, line=dict(color='#FF00FF')))
-                fig.update_layout(title=dict(text=title, x=0.05, font=dict(color='#FF1801', size=20)), xaxis=dict(title="Distance (m)"), yaxis=dict(title=y_labels[i]), template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40))
+                fig.update_layout(title=dict(text=title, x=0.05, font=dict(color='#FF1801', size=20, family="Segoe UI")), xaxis=dict(title="Distance (m)"), yaxis=dict(title=y_labels[i]), template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40))
                 st.plotly_chart(fig, use_container_width=True)
 
 with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
