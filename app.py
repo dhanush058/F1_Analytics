@@ -32,7 +32,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. RESILIENT DATA ENGINE ---
+# --- 2. DATA ENGINE ---
 def check_api_health():
     try:
         return requests.get("https://api.openf1.org/v1/meetings?year=2024", timeout=5).status_code == 200
@@ -85,10 +85,8 @@ if not meetings.empty:
         d2_name = st.sidebar.selectbox("Ref Driver", sorted(drivers['full_name'].str.title().unique()), index=1)
         sim = st.sidebar.checkbox("Simulation Mode", value=st.session_state.sim_mode)
         
-        # Diagnostic Check
         if not is_api_healthy and not sim:
             st.error("⚠️ API CONNECTION FAILED")
-            st.markdown("The live telemetry server is currently unreachable.")
             if st.button("Enable Simulation Mode"):
                 st.session_state.sim_mode = True
                 st.rerun()
@@ -97,8 +95,8 @@ if not meetings.empty:
         city = next((v for k, v in CITY_MAP.items() if k in gp_raw), "Location")
         st.markdown(f"<div class='title-text'>{gp_raw}, {year}, {city}, {s_name}</div>", unsafe_allow_html=True)
 
-        d1_n = drivers[drivers['full_name'].str.title()==d1_name]['driver_number'].iloc[0]
-        d2_n = drivers[drivers['full_name'].str.title()==d2]['driver_number'].iloc[0]
+        d1_n = drivers[drivers['full_name'].str.title() == d1_name]['driver_number'].iloc[0]
+        d2_n = drivers[drivers['full_name'].str.title() == d2_name]['driver_number'].iloc[0]
         df1, lap1, len1 = get_telemetry(d1_n, s_key, year, sim, 1)
         df2, lap2, len2 = get_telemetry(d2_n, s_key, year, sim, 2)
 
@@ -122,13 +120,3 @@ if not meetings.empty:
             fig.add_trace(go.Scatter(x=df2['distance'], y=df2['throttle'], name=d2_name, line=dict(color='#FF00FF'), showlegend=False), row=3, col=1)
             fig.update_layout(template="plotly_dark", height=850)
             st.plotly_chart(fig, use_container_width=True)
-
-# --- GUIDE ---
-with st.expander("🛡️ SYSTEM STATUS & ANALYTICS GUIDE"):
-    st.markdown("""
-    ### 🧠 Data Diagnostics
-    - **Fail-Safe Architecture:** If the live stream is interrupted, the system automatically detects the outage and allows a seamless switch to **Simulation Mode**.
-    - **Lap Time Delta:** Negative (Green) = Driver A is faster.
-    - **Spatial Gap:** Positive (Green) = Driver A is gaining ground.
-    - **Simulation Pipeline:** Uses deterministic physics modeling to ensure uninterrupted analysis.
-    """)
