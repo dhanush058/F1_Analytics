@@ -45,23 +45,24 @@ def get_openf1(endpoint, params=None):
         return pd.DataFrame(res.json()) if res.status_code == 200 else pd.DataFrame()
     except: return pd.DataFrame()
 
-def get_telemetry(d_num, s_key, sim, d_id):
+def get_telemetry(d1_n, d2_n, s_key, sim, d_id):
     if sim:
-        seed = zlib.crc32(f"{s_key}_{d_num}_{d_id}".encode())
+        # Hashing session key AND driver numbers to guarantee uniqueness per combination
+        seed = zlib.crc32(f"{s_key}_{d1_n}_{d2_n}_{d_id}".encode())
         np.random.seed(seed)
         dist = np.linspace(0, 4000.0, 1000)
-        # Physics model: Aggressive braking and acceleration curves
-        speed = 200 + 120 * np.sin(dist / 500) + 10 * np.cos(dist / 100)
-        throttle = 50 + 50 * np.sin(dist / 200 + (seed % 10))
+        # Physics model: Aggressive curves with unique phase shifts based on seed
+        speed = 200 + 100 * np.sin(dist / 500 + (seed % 10)) + 20 * np.cos(dist / 100)
+        throttle = 40 + 60 * np.sin(dist / 200 + (seed % 20))
         throttle = np.clip(throttle, 0, 100) 
-        return pd.DataFrame({'distance': dist, 'speed': speed, 'throttle': throttle}), 88.0 + (seed % 5), 4000.0
+        return pd.DataFrame({'distance': dist, 'speed': speed, 'throttle': throttle}), 85.0 + (seed % 15), 4000.0
     
-    laps = get_openf1("laps", {"session_key": s_key, "driver_number": d_num})
+    laps = get_openf1("laps", {"session_key": s_key, "driver_number": d1_n})
     if laps.empty: return pd.DataFrame(), 0, 0
     f_lap = laps.sort_values('lap_duration').iloc[0]
     
     start = pd.to_datetime(f_lap['date_start']).tz_convert('UTC').tz_localize(None)
-    tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d_num}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={(start + pd.Timedelta(seconds=float(f_lap['lap_duration']))).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
+    tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d1_n}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={(start + pd.Timedelta(seconds=float(f_lap['lap_duration']))).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
     if tel.empty: return pd.DataFrame(), f_lap['lap_duration'], 0
     tel['date'] = pd.to_datetime(tel['date'])
     tel = tel.sort_values('date')
@@ -101,8 +102,8 @@ if not meetings.empty:
 
         d1_n = drivers[drivers['full_name'].str.title() == d1_name]['driver_number'].iloc[0]
         d2_n = drivers[drivers['full_name'].str.title() == d2_name]['driver_number'].iloc[0]
-        df1, lap1, len1 = get_telemetry(d1_n, s_key, sim, 1)
-        df2, lap2, len2 = get_telemetry(d2_n, s_key, sim, 2)
+        df1, lap1, len1 = get_telemetry(d1_n, d2_n, s_key, sim, 1)
+        df2, lap2, len2 = get_telemetry(d2_n, d1_n, s_key, sim, 2)
 
         if len(df1) > 5 and len(df2) > 5:
             common = min(len(df1), len(df2))
