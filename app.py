@@ -66,7 +66,7 @@ COLOR_DELTA = '#00FF00'
 COLOR_BG = '#0B0B0E'    
 
 # --- 2. ROBUST API FETCHER ---
-@st.cache_data(ttl=600)
+# Removed @st.cache_data to prevent "poisoning" the cache with empty data when the API drops
 def get_openf1(endpoint, params=None):
     base_url = "https://api.openf1.org/v1/"
     headers = {
@@ -75,7 +75,11 @@ def get_openf1(endpoint, params=None):
     }
     try:
         res = requests.get(base_url + endpoint, params=params, headers=headers, timeout=45)
-        return pd.DataFrame(res.json()) if res.status_code == 200 else pd.DataFrame()
+        if res.status_code == 200:
+            return pd.DataFrame(res.json())
+        else:
+            st.toast(f"API Error {res.status_code}: Retrying connection...", icon="⚠️")
+            return pd.DataFrame()
     except Exception as e:
         return pd.DataFrame()
 
@@ -168,7 +172,6 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
     start_str = start_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
     end_str = end_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
     
-    # FIX: Let the python dictionary handle the URL encoding for date>= and date<= to guarantee the OpenF1 server doesn't reject it
     tel = get_openf1("car_data", {
         "session_key": s_key, 
         "driver_number": d_num, 
@@ -312,7 +315,7 @@ with st.expander("📖 PIT-WALL TELEMETRY & DATA GOVERNANCE STANDARD"):
     ---
 
     ### 🛡️ Data Governance: Why Simulation Data is Required
-    * **The 2026 Live Data Problem:** The official OpenF1 API database relies on historical, post-race session dumps. Currently, the telemetry for un-driven future races simply does not exist yet.
+    * **The Live Data Problem:** The official OpenF1 API database relies on historical, post-race session dumps. Currently, the telemetry for un-driven future races simply does not exist yet.
     * **Cloud Proxy Blocking:** Furthermore, cloud hosting platforms frequently face rate-limiting or HTTP 403 blocks from external sports APIs. 
     * **The Solution (Synthetic Transparency):** When live queries drop or data is pending, the app triggers a deterministic, mathematically seeded physics engine. This dynamically constructs realistic circuit lengths, corner profiles, and drag physics unique to the selected Grand Prix. **We explicitly declare this fallback state in the top-right "Data Pipeline Status" card so users never mistake synthetic physics models for live engineering data.**
     """)
