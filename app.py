@@ -87,7 +87,7 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
     tel['distance_raw'] = ((tel['speed'] / 3.6) * tel['dt']).cumsum()
     
     track_length = tel['distance_raw'].max()
-    dist_ref = np.linspace(0, track_length, 1000)
+    dist_ref = np.linspace(0, track_length if track_length > 0 else 4000.0, 1000)
     
     return pd.DataFrame({
         'distance': dist_ref,
@@ -113,7 +113,6 @@ if not meetings.empty:
         if not drivers_data.empty:
             d1_display = st.sidebar.selectbox("Driver A", sorted(drivers_data['full_name'].str.title().unique()), index=0)
             d2_display = st.sidebar.selectbox("Ref Driver", sorted(drivers_data['full_name'].str.title().unique()), index=1)
-            
             d1_api = drivers_data[drivers_data['full_name'].str.title() == d1_display]['full_name'].iloc[0]
             d2_api = drivers_data[drivers_data['full_name'].str.title() == d2_display]['full_name'].iloc[0]
 
@@ -123,12 +122,16 @@ if not meetings.empty:
 
             if not df_a.empty and not df_b.empty:
                 st.markdown(f"## F1 TELEMETRY ANALYSIS\n#### {selected_gp} — {selected_session}")
+                
+                delta_arr = np.cumsum((1 / (df_b['speed']/3.6)) - (1 / (df_a['speed']/3.6))) * (max(len_a, len_b)/1000)
+                max_spatial_gap = abs(delta_arr[-1])
+                
                 m1, m2, m3, m4, m5 = st.columns(5)
                 vmax_a, vmax_b = df_a['speed'].max(), df_b['speed'].max()
                 m1.metric("VMAX — A", f"{vmax_a:.0f} KM/H", f"{vmax_a-vmax_b:.0f}")
                 m2.metric("VMAX — B", f"{vmax_b:.0f} KM/H", f"{vmax_b-vmax_a:.0f}")
                 m3.metric("LAP TIME DELTA", f"{abs(lap_a - lap_b):.3f} S")
-                m4.metric("MAX SPATIAL GAP", f"{abs(np.cumsum((1 / (df_b['speed']/3.6)) - (1 / (df_a['speed']/3.6))) * (max(len_a, len_b)/1000))[-1]):.3f} S")
+                m4.metric("MAX SPATIAL GAP", f"{max_spatial_gap:.3f} S")
                 m5.metric("PIPELINE", "SIM" if sim_mode else "LIVE")
                 
                 fig = make_subplots(rows=3, cols=1, shared_xaxes=True)
