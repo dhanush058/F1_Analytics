@@ -47,15 +47,15 @@ def get_openf1(endpoint, params=None):
 
 def get_telemetry(d1_n, d2_n, s_key, sim, d_id):
     if sim:
-        # Hashing session key AND driver numbers to guarantee uniqueness per combination
         seed = zlib.crc32(f"{s_key}_{d1_n}_{d2_n}_{d_id}".encode())
         np.random.seed(seed)
         dist = np.linspace(0, 4000.0, 1000)
-        # Physics model: Aggressive curves with unique phase shifts based on seed
-        speed = 200 + 100 * np.sin(dist / 500 + (seed % 10)) + 20 * np.cos(dist / 100)
-        throttle = 40 + 60 * np.sin(dist / 200 + (seed % 20))
-        throttle = np.clip(throttle, 0, 100) 
-        return pd.DataFrame({'distance': dist, 'speed': speed, 'throttle': throttle}), 85.0 + (seed % 15), 4000.0
+        
+        # Piecewise Physics: Sharp speed drops and flat-throttle zones
+        speed = 280 + 50 * np.sin(dist / 300) - 40 * np.abs(np.sin(dist / 600)) 
+        throttle = 100 * (np.sin(dist / 200 + (seed % 5)) > 0.3).astype(float)
+        
+        return pd.DataFrame({'distance': dist, 'speed': speed, 'throttle': throttle}), 85.0 + (seed % 5), 4000.0
     
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d1_n})
     if laps.empty: return pd.DataFrame(), 0, 0
@@ -139,3 +139,4 @@ with st.expander("🛡️ SYSTEM STATUS & ANALYTICS GUIDE"):
     * **Spatial Normalization:** Uses `numpy.interp` to align telemetry streams of varying sample rates across a fixed distance axis.
     * **Deterministic Engine:** Simulation uses `zlib.crc32` hashing to provide repeatable, physics-grounded telemetry for testing.
     """)
+    ```
