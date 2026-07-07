@@ -6,24 +6,33 @@ import zlib
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# --- CONFIG & THEME ---
+# --- 1. CONFIGURATION & PIT-WALL CARBON THEME ---
 st.set_page_config(layout="wide", page_title="F1 Analytics: Pit-Wall")
+
 st.markdown("""
 <style>
     .stApp { background-color: #0B0B0E; color: #FFFFFF; }
-    [data-testid="stMetric"] { background-color: #15151C !important; border-top: 4px solid #FF1801 !important; padding: 15px; }
-    h1, h2, h3, h4 { font-family: 'Courier New', monospace !important; color: #FFFFFF !important; }
+    [data-testid="stSidebar"] { background-color: #111116; border-right: 2px solid #FF1801; }
+    [data-testid="stMetric"] {
+        background-color: #15151C !important; border: 1px solid #2A2A35 !important;
+        border-top: 4px solid #FF1801 !important; border-radius: 4px !important;
+        padding: 10px 15px !important; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    [data-testid="stMetricLabel"] { color: #8E8E9F !important; font-family: 'Courier New', monospace !important; font-size: 0.75rem !important; text-transform: uppercase !important; letter-spacing: 1px !important; }
+    [data-testid="stMetricValue"] { color: #FFFFFF !important; font-family: 'Courier New', monospace !important; font-size: 1.35rem !important; font-weight: 800 !important; }
+    h1, h2, h3, h4 { font-family: 'Courier New', monospace !important; color: #FFFFFF !important; letter-spacing: 1px !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- DATA FETCHING ---
+# Neon Color Palette
+COLOR_A, COLOR_B, COLOR_DELTA, COLOR_BG = '#00FFFF', '#FF00FF', '#00FF00', '#0B0B0E'
+
 def get_openf1(endpoint, params=None):
     try:
         res = requests.get(f"https://api.openf1.org/v1/{endpoint}", params=params, timeout=45)
         return pd.DataFrame(res.json()) if res.status_code == 200 else pd.DataFrame()
     except: return pd.DataFrame()
 
-# --- DATA ENGINE ---
 def get_telemetry(d_num, s_key, year, sim_mode, d_id):
     if sim_mode:
         seed = zlib.crc32(f"{year}_{d_num}_{d_id}".encode())
@@ -43,7 +52,7 @@ def get_telemetry(d_num, s_key, year, sim_mode, d_id):
     if tel.empty: return pd.DataFrame(), f_lap['lap_duration'], 0
     
     tel['date'] = pd.to_datetime(tel['date'])
-    tel = tel.sort_values('date')
+    tel = tel.dropna(subset=['speed', 'date']).sort_values('date')
     tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0)
     tel['dist'] = ((tel['speed']/3.6) * tel['dt']).cumsum()
     
@@ -54,7 +63,7 @@ def get_telemetry(d_num, s_key, year, sim_mode, d_id):
         'throttle': np.interp(dist_ref, tel['dist'], tel['throttle'])
     }), f_lap['lap_duration'], tel['dist'].max()
 
-# --- SIDEBAR ---
+# --- CONTROL & DISPLAY ---
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
 meetings = get_openf1("meetings", {"year": year})
 if not meetings.empty:
@@ -79,26 +88,27 @@ if not meetings.empty:
                 common = min(len(df1), len(df2))
                 delta = np.cumsum((1 / np.maximum(df2['speed'].values[:common]/3.6, 1)) - (1 / np.maximum(df1['speed'].values[:common]/3.6, 1))) * (max(len1, len2)/common)
                 
-                m1, m2, m3, m4 = st.columns(4)
+                m1, m2, m3, m4, m5 = st.columns(5)
                 m1.metric("VMAX A", f"{df1['speed'].max():.0f} KM/H", f"{df1['speed'].max()-df2['speed'].max():.0f}")
                 m2.metric("VMAX B", f"{df2['speed'].max():.0f} KM/H", f"{df2['speed'].max()-df1['speed'].max():.0f}")
                 m3.metric("LAP DELTA", f"{abs(lap1-lap2):.3f} S", f"{(lap2-lap1):.3f}", delta_color="inverse")
                 m4.metric("SPATIAL GAP", f"{abs(delta[-1]):.3f} S", f"{delta[-1]:.3f}", delta_color="normal")
+                m5.metric("PIPELINE", "SIM" if sim else "LIVE")
                 
                 fig = make_subplots(rows=3, cols=1, shared_xaxes=True)
-                fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta, name="Delta", line=dict(color='#00FF00')), row=1, col=1)
-                fig.add_trace(go.Scatter(x=df1['distance'], y=df1['speed'], name=d1, line=dict(color='#00FFFF')), row=2, col=1)
-                fig.add_trace(go.Scatter(x=df2['distance'], y=df2['speed'], name=d2, line=dict(color='#FF00FF')), row=2, col=1)
-                fig.add_trace(go.Scatter(x=df1['distance'], y=df1['throttle'], name="Throttle A", line=dict(color='#00FFFF'), showlegend=False), row=3, col=1)
-                fig.add_trace(go.Scatter(x=df2['distance'], y=df2['throttle'], name="Throttle B", line=dict(color='#FF00FF'), showlegend=False), row=3, col=1)
+                fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta, name="Delta", line=dict(color=COLOR_DELTA)), row=1, col=1)
+                fig.add_trace(go.Scatter(x=df1['distance'], y=df1['speed'], name=d1, line=dict(color=COLOR_A)), row=2, col=1)
+                fig.add_trace(go.Scatter(x=df2['distance'], y=df2['speed'], name=d2, line=dict(color=COLOR_B)), row=2, col=1)
+                fig.add_trace(go.Scatter(x=df1['distance'], y=df1['throttle'], name=d1, line=dict(color=COLOR_A), showlegend=False), row=3, col=1)
+                fig.add_trace(go.Scatter(x=df2['distance'], y=df2['throttle'], name=d2, line=dict(color=COLOR_B), showlegend=False), row=3, col=1)
                 fig.update_layout(template="plotly_dark", height=850)
                 st.plotly_chart(fig, use_container_width=True)
 
-# --- USER GUIDE ---
+# --- HUMAN-READABLE GUIDE ---
 with st.expander("📖 PIT-WALL ANALYTICS GUIDE"):
     st.markdown("""
-    ### 📊 How to Interpret the Data
-    - **Spatial Gap:** This tells you the time distance between cars at any point on the track. If the number is negative and marked in **Red**, Driver A is losing time to the Reference driver. If Green, they are gaining.
-    - **Spatial Normalization:** Since drivers don't cross finish lines at the exact same time, we map their data to **distance** rather than time. This aligns both drivers to the same "meter" on the track, making comparisons mathematically fair.
-    - **Simulation vs. Live:** If you see "SIMULATION" in the Pipeline, you are viewing a physics-based model. Live API data is only available for completed historical sessions; future or ongoing sessions may require Simulation mode.
+    ### 🧠 Reading the Data
+    - **Spatial Gap:** The difference in time between drivers at a specific meter on the track. If this is negative (Red arrow down), Driver A is currently losing ground to the reference. If positive (Green arrow up), Driver A is gaining.
+    - **Spatial Normalization:** Since cars cross the finish line at different times, we map data to **distance** to ensure fair comparison.
+    - **Simulation Pipeline:** The 'PIPELINE' metric lets you know if you are viewing live API data (Real Race) or our physics model (Simulation).
     """)
