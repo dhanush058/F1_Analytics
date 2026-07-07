@@ -124,13 +124,13 @@ if not meetings.empty:
 # --- GUIDE ---
 with st.expander("🛡️ SYSTEM STATUS & ANALYTICS GUIDE"):
     st.markdown("""
-    ### 🧠 How to Read These Metrics
-    - **Lap Time Delta:** A negative value (Green) means Driver A is faster. A positive value (Red) means they are slower.
-    - **Spatial Gap:** The cumulative time difference between drivers. Positive (Green) means Driver A is gaining ground; Negative (Red) means they are losing time.
-    - **VMAX Delta:** Shows the top-speed advantage for each driver over their opponent.
+    ### 🧠 Interpreting the Analytics
+    * **Lap Time Delta:** Shows the comparative lap time. **Negative (Green)** indicates the driver is faster; **Positive (Red)** indicates the driver is slower.
+    * **Spatial Gap:** The cumulative time advantage/loss mapped over track distance. **Positive (Green)** indicates a time gain; **Negative (Red)** indicates a time loss.
+    * **Plot Synchronization:** Speed and throttle traces are **spatially normalized**. This ensures that braking points (speed drops) align perfectly with throttle lifts (throttle drops) at the exact same meter on the track.
     
-    ### 🏗️ Data Governance & Technical Integrity
-    - **Resilient Pipeline:** The application uses a **fail-safe architecture**. If the external OpenF1 API becomes unreachable, the system executes a health check and triggers an automated transition to **Simulation Mode**.
-    - **Data Normalization:** We use `numpy` interpolation over a shared `distance` axis to ensure apples-to-apples comparisons between drivers with different telemetry sampling rates.
-    - **Deterministic Simulation:** Our simulation pipeline uses `zlib.crc32` hashing of race metadata to generate repeatable, deterministic baseline data. This ensures your dashboard remains functional even in offline or high-latency environments.
+    ### 🏗️ Engineering & Data Governance
+    * **Spatial Normalization Pipeline:** Because F1 data comes from sensors at different sample rates, we map all time-series telemetry to a fixed `distance` axis. We use `numpy.interp` to perform linear re-sampling, creating a high-fidelity synthetic comparison between two different data streams.
+    * **Deterministic Simulation Engine:** When live APIs (OpenF1) fail, the app triggers a `zlib.crc32` hash-based simulation model. This ensures deterministic output (the same input always generates the same 'simulated' curve), preventing the UI from breaking or hallucinating data.
+    * **Resilience:** Defensive error handling with `timeout=10s` and custom `User-Agent` headers prevents network bottlenecks and server-side rate-limiting.
     """)
