@@ -69,7 +69,6 @@ COLOR_BG = '#0B0B0E'
 @st.cache_data(ttl=600)
 def get_openf1(endpoint, params=None):
     base_url = "https://api.openf1.org/v1/"
-    # FIX 1: Add a custom User-Agent to bypass API firewalls/403 blocks
     headers = {
         "User-Agent": "F1-Telemetry-Dashboard/1.0 (Data Analytics App)",
         "Accept": "application/json"
@@ -83,7 +82,6 @@ def get_openf1(endpoint, params=None):
 # --- 3. DATA ENGINE (REAL LIVE DATA & ADVANCED DYNAMIC PHYSICS SIM) ---
 def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, year, is_sim=False, driver_id=1):
     if is_sim:
-        # Cryptographic String Hashing ensures 0% chance of data overlap
         track_uid = f"{year}_{track_name}_{s_key}"
         driver_uid = f"{year}_{track_name}_{s_key}_{driver_api_name}_{driver_id}"
         
@@ -167,13 +165,16 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
         
     end_time = start_time + pd.Timedelta(seconds=float(fastest_lap['lap_duration']) + 0.5)
     
-    # FIX 2: Enforce strict milliseconds ([:-3]) so the OpenF1 database doesn't reject the query
     start_str = start_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
     end_str = end_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
     
-    # FIX 3: Manually build the car_data URL to bypass 'requests' dict url-encoding corruption on the ">=" symbols
-    car_endpoint = f"car_data?session_key={s_key}&driver_number={d_num}&date>={start_str}&date<={end_str}"
-    tel = get_openf1(car_endpoint) # Notice we pass it as a raw string, not a dictionary
+    # FIX: Let the python dictionary handle the URL encoding for date>= and date<= to guarantee the OpenF1 server doesn't reject it
+    tel = get_openf1("car_data", {
+        "session_key": s_key, 
+        "driver_number": d_num, 
+        "date>=": start_str, 
+        "date<=": end_str
+    })
     
     if tel.empty or 'speed' not in tel.columns: 
         return pd.DataFrame(), fastest_lap['lap_duration'], 0
@@ -188,7 +189,6 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
     tel['date'] = pd.to_datetime(tel['date'])
     tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0.0)
     
-    # Mathematical integration to find physical distance
     tel['distance_raw'] = (tel['speed'] / 3.6) * tel['dt'] 
     tel['distance_raw'] = tel['distance_raw'].cumsum()
     
@@ -250,7 +250,6 @@ else:
     
     m1, m2, m3, m4, m5 = st.columns(5)
     
-    # Delta Math Processing
     master_track_len = max(len_a, len_b)
     v_a_ms = np.where(df_a['speed'] < 10, 10, df_a['speed']) / 3.6
     v_b_ms = np.where(df_b['speed'] < 10, 10, df_b['speed']) / 3.6
@@ -259,7 +258,6 @@ else:
     delta_time_array = np.cumsum((1 / v_b_ms) - (1 / v_a_ms)) * dx_step
     final_delta = lap_time_a - lap_time_b if (lap_time_a and lap_time_b) else delta_time_array[-1]
     
-    # Max Spatial Gap Calculation
     max_gap_idx = np.argmax(np.abs(delta_time_array))
     max_gap = delta_time_array[max_gap_idx]
     
@@ -267,16 +265,10 @@ else:
     vmax_b = df_b['speed'].max()
     vmax_diff = vmax_a - vmax_b
 
-    # Metrics with Native Up/Down Arrows
     m1.metric(label=f"VMAX — {d1_display.split()[-1].upper()}", value=f"{vmax_a:.0f} KM/H", delta=f"{vmax_diff:.0f} KM/H")
     m2.metric(label=f"VMAX — {d2_display.split()[-1].upper()}", value=f"{vmax_b:.0f} KM/H", delta=f"{-vmax_diff:.0f} KM/H")
-    
-    # Final Lap Time Gap (Inverse color: negative time is better/faster)
     m3.metric(label="LAP TIME DELTA", value=f"{abs(final_delta):.3f} S", delta=f"{-final_delta:.3f} S", delta_color="inverse")
-    
-    # Replaced Track Dim with Max Spatial Gap
     m4.metric(label="MAX SPATIAL GAP", value=f"{abs(max_gap):.3f} S", delta=f"{max_gap:.3f} S")
-    
     m5.metric(label="DATA PIPELINE", value="SIMULATION" if sim_mode else "LIVE API")
 
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
