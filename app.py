@@ -31,7 +31,6 @@ st.markdown("""
     }
     [data-testid="stMetricDelta"] { font-family: 'Courier New', monospace !important; font-weight: bold !important; }
     h1, h2, h3, h4 { font-family: 'Courier New', monospace !important; color: #FFFFFF !important; letter-spacing: 1px !important; }
-    .streamlit-expanderHeader { background-color: #15151C !important; color: white !important; border: 1px solid #2A2A35 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -52,10 +51,9 @@ def get_telemetry(driver_api_name, s_key, drivers_df, track_name, session_name, 
         track_seed = zlib.crc32(f"{year}_{track_name}_{s_key}".encode()) & 0xffffffff
         driver_seed = zlib.crc32(f"{year}_{track_name}_{s_key}_{driver_api_name}_{driver_id}".encode()) & 0xffffffff
         np.random.seed(track_seed)
-        dist_ref = np.linspace(0, 4000.0, 1000)
+        dist = np.linspace(0, 4000.0, 1000)
         np.random.seed(driver_seed)
-        speed = np.full(1000, 290.0 + (driver_seed % 6) - 3)
-        return pd.DataFrame({'distance': dist_ref, 'speed': speed, 'throttle': np.full(1000, 100.0)}), 90.0, 4000.0
+        return pd.DataFrame({'distance': dist, 'speed': np.full(1000, 290.0+(driver_seed%6)-3), 'throttle': 100.0}), 90.0, 4000.0
 
     try:
         d_num = int(drivers_df[drivers_df['full_name'] == driver_api_name]['driver_number'].iloc[0])
@@ -102,23 +100,24 @@ if not meetings.empty:
             df_a, lap_a, len_a = get_telemetry(drivers[drivers['full_name'].str.title()==d1]['full_name'].iloc[0], s_key, drivers, selected_gp, "Race", year, sim_mode, 1)
             df_b, lap_b, len_b = get_telemetry(drivers[drivers['full_name'].str.title()==d2]['full_name'].iloc[0], s_key, drivers, selected_gp, "Race", year, sim_mode, 2)
 
-        if not df_a.empty and not df_b.empty:
-            st.markdown("## F1 TELEMETRY ANALYSIS")
-            delta_arr = np.cumsum((1 / (df_b['speed']/3.6)) - (1 / (df_a['speed']/3.6))) * (max(len_a, len_b)/1000)
+        if not df_a.empty and not df_b.empty and len(df_a) > 5 and len(df_b) > 5:
+            st.markdown(f"## F1 TELEMETRY ANALYSIS\n#### {selected_gp}")
+            
+            common = min(len(df_a), len(df_b))
+            v_a, v_b = df_a['speed'].values[:common]/3.6, df_b['speed'].values[:common]/3.6
+            delta_arr = np.cumsum((1 / np.maximum(v_b, 1)) - (1 / np.maximum(v_a, 1))) * (max(len_a, len_b)/common)
             
             m1, m2, m3, m4, m5 = st.columns(5)
             m1.metric("VMAX — A", f"{df_a['speed'].max():.0f} KM/H", f"{df_a['speed'].max()-df_b['speed'].max():.0f}")
             m2.metric("VMAX — B", f"{df_b['speed'].max():.0f} KM/H", f"{df_b['speed'].max()-df_a['speed'].max():.0f}")
             m3.metric("LAP TIME DELTA", f"{abs(lap_a - lap_b):.3f} S", f"{(lap_b - lap_a):.3f} S", delta_color="inverse")
-            m4.metric("MAX SPATIAL GAP", f"{abs(delta_arr[-1]):.3f} S", f"{delta_arr[-1]:.3f} S")
+            m4.metric("MAX SPATIAL GAP", f"{abs(delta_arr[-1]):.3f} S", f"{delta_arr[-1]:.3f} S", delta_color="normal")
             m5.metric("PIPELINE", "SIM" if sim_mode else "LIVE")
             
             fig = make_subplots(rows=2, cols=1, shared_xaxes=True)
             fig.add_trace(go.Scatter(x=df_a['distance'], y=df_a['speed'], name=d1, line=dict(color=COLOR_A)), row=1, col=1)
-            fig.add_trace(go.Scatter(x=df_a['distance'], y=delta_arr, name="Time Delta", line=dict(color=COLOR_DELTA)), row=2, col=1)
+            fig.add_trace(go.Scatter(x=df_b['distance'], y=df_b['speed'], name=d2, line=dict(color=COLOR_B)), row=1, col=1)
+            fig.add_trace(go.Scatter(x=df_a['distance'][:common], y=delta_arr, name="Time Delta", line=dict(color=COLOR_DELTA)), row=2, col=1)
             fig.update_layout(template="plotly_dark", height=700)
             st.plotly_chart(fig, use_container_width=True)
-
-# --- 7. HUMAN-ENGINEERING EXPANDER ---
-with st.expander("📖 PIT-WALL TELEMETRY & DATA GOVERNANCE STANDARD"):
-    st.markdown("### 📊 Telemetry Analysis Breakdown\n* **Time Delta:** Evaluates ongoing advantage.\n* **Speed Curves:** Deep V-shapes highlight braking zones.\n* **Systems:** Data is spatially normalized using custom interpolation to align irregular 3.7Hz sensor packets.")
+        else: st.error("⚠️ Telemetry insufficient for this selection. Try Simulation Mode.")
