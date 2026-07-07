@@ -47,18 +47,19 @@ def get_openf1(endpoint, params=None):
 
 def get_telemetry(d_num, s_key, sim, d_id):
     if sim:
-        # Hashing session key AND driver number ensures uniqueness for every combination
         seed = zlib.crc32(f"{s_key}_{d_num}_{d_id}".encode())
         np.random.seed(seed)
         dist = np.linspace(0, 4000.0, 1000)
-        # Add non-linear variance based on seed to make curves look distinct
-        speed = 270 + 40 * np.sin(dist / 400 + (seed % 5)) + (seed % 20)
-        throttle = 70 + 30 * np.sin(dist / 150 + seed)
-        return pd.DataFrame({'distance': dist, 'speed': speed, 'throttle': throttle}), 90.0 + (seed % 10), 4000.0
+        # Physics model: Aggressive braking and acceleration curves
+        speed = 200 + 120 * np.sin(dist / 500) + 10 * np.cos(dist / 100)
+        throttle = 50 + 50 * np.sin(dist / 200 + (seed % 10))
+        throttle = np.clip(throttle, 0, 100) 
+        return pd.DataFrame({'distance': dist, 'speed': speed, 'throttle': throttle}), 88.0 + (seed % 5), 4000.0
     
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d_num})
     if laps.empty: return pd.DataFrame(), 0, 0
     f_lap = laps.sort_values('lap_duration').iloc[0]
+    
     start = pd.to_datetime(f_lap['date_start']).tz_convert('UTC').tz_localize(None)
     tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d_num}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={(start + pd.Timedelta(seconds=float(f_lap['lap_duration']))).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
     if tel.empty: return pd.DataFrame(), f_lap['lap_duration'], 0
@@ -134,6 +135,6 @@ with st.expander("🛡️ SYSTEM STATUS & ANALYTICS GUIDE"):
     
     ### 🏗️ Engineering & Data Governance
     * **Resilient Pipeline:** Includes automatic failover to deterministic simulation if the live API heartbeat fails.
-    * **Spatial Normalization:** Uses `numpy.interp` to align telemetry streams of varying sample rates across a fixed 4km distance axis.
-    * **Unique Simulation Engine:** Every session generates a unique, deterministic hash using `session_key` and `driver_number` to ensure the simulation model is always distinct, high-fidelity, and reproducible.
+    * **Spatial Normalization:** Uses `numpy.interp` to align telemetry streams of varying sample rates across a fixed distance axis.
+    * **Deterministic Engine:** Simulation uses `zlib.crc32` hashing to provide repeatable, physics-grounded telemetry for testing.
     """)
