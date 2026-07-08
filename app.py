@@ -138,7 +138,7 @@ with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
     st.markdown("""
     ### How to Read These Plots:
     - Time Delta: A negative value (Green) means your primary driver is pulling away. Positive (Red) means they are losing time.
-    - Spatial Gap: This shows the net time difference across the whole track. Think of this as the "Ghost Car" gap—a positive slope means you're gaining ground, while a dip shows where you're bleeding time.
+    - Spatial Gap: Calculates the physical track separation (in meters) between drivers. This surfaces exact corner-entry and exit points where the performance gap widens or closes—like braking late into a corner or getting a better exit—decoupling raw speed from position.
     - Telemetry: These plots are synced to distance, not time. This is how engineers find exactly where a driver is braking too early or missing the exit power.
 
     ### Metric Breakdown:
