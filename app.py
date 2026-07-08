@@ -116,6 +116,11 @@ st.markdown("<div class='main-title'>Formula 1 Telemetry Analysis</div>", unsafe
 if not meetings.empty:
     gp_raw = st.sidebar.selectbox("GP", meetings['meeting_name'].unique())
     s_data = get_openf1("sessions", {"meeting_key": meetings[meetings['meeting_name'] == gp_raw]['meeting_key'].iloc[0]})
+    
+    if s_data.empty or 'session_name' not in s_data.columns:
+        st.warning(f"⚠️ No session data available yet for the {year} {gp_raw}. This usually means the race has not taken place yet.")
+        st.stop()
+        
     s_name = st.sidebar.selectbox("Session", s_data['session_name'].unique())
     s_key = s_data[s_data['session_name'] == s_name]['session_key'].iloc[0]
     drivers = get_openf1("drivers", {"session_key": s_key})
