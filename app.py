@@ -32,6 +32,7 @@ st.markdown("""
     .main-title { text-align: center; font-size: 2rem; color: #FFFFFF; margin-bottom: 10px; font-weight: 500; }
     .subtitle-text { text-align: center; font-size: 1.1rem; color: #FF1801 !important; margin-bottom: 25px; font-weight: 500; }
     h2, h3 { color: #FF1801 !important; font-weight: 500; font-size: 1.1rem; }
+    .warning-box { background-color: #2A1111; border-left: 4px solid #FF1801; padding: 15px; border-radius: 4px; margin-top: 20px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,28 +60,51 @@ def get_telemetry(d1_n, d2_n, s_key, sim, d_id, offset=0):
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d1_n})
     # Check if laps exist and have a valid duration
     if laps.empty or 'lap_duration' not in laps.columns: return pd.DataFrame(), 0, 0
-    f_lap = laps.sort_values('lap_duration').iloc[0]
     
-    # Defensive check: ensure lap_duration is numeric
-    try:
+    # Clean the laps dataframe to prevent NaN crashes
+    laps['lap_duration'] = pd.to_numeric(laps['lap_duration'], errors='coerce')
+    laps = laps.dropna(subset=['lap_duration', 'date_start'])
+    if laps.empty: return pd.DataFrame(), 0, 0
+    
+    # Iterate through fastest laps until we find one WITH complete telemetry
+    laps = laps.sort_values('lap_duration')
+    
+    for _, f_lap in laps.iterrows():
         duration = float(f_lap['lap_duration'])
-    except (TypeError, ValueError):
-        return pd.DataFrame(), 0, 0
-    
-    start = pd.to_datetime(f_lap['date_start']).tz_convert('UTC').tz_localize(None)
-    end = start + pd.Timedelta(seconds=duration)
-    tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d1_n}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={end.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
-    
-    try:
-        if tel.empty or 'date' not in tel.columns: return pd.DataFrame(), duration, 0
-        tel['date'] = pd.to_datetime(tel['date'])
-        tel = tel.sort_values('date')
-        tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0)
-        tel['dist'] = ((tel['speed']/3.6) * tel['dt']).cumsum()
-        ref = np.linspace(0, tel['dist'].max() if tel['dist'].max() > 0 else 4000.0, 1000)
-        return pd.DataFrame({'distance': ref, 'speed': np.interp(ref, tel['dist'], tel['speed']), 'throttle': np.interp(ref, tel['dist'], tel['throttle'])}), duration, tel['dist'].max()
-    except Exception:
-        return pd.DataFrame(), duration, 0
+        
+        try:
+            start = pd.to_datetime(f_lap['date_start'])
+            if start.tzinfo is not None:
+                start = start.tz_convert('UTC').tz_localize(None)
+        except Exception:
+            continue
+            
+        end = start + pd.Timedelta(seconds=duration)
+        tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d1_n}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={end.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
+        
+        # Verify telemetry has enough data points AND distance before returning
+        if not tel.empty and 'date' in tel.columns and len(tel) > 100:
+            try:
+                tel['date'] = pd.to_datetime(tel['date'])
+                tel = tel.sort_values('date')
+                tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0)
+                tel['dist'] = ((tel['speed']/3.6) * tel['dt']).cumsum()
+                
+                # Must be a reasonably complete lap (e.g. > 2000 meters) to avoid interpolation errors
+                if tel['dist'].max() < 2000.0:
+                    continue
+                    
+                ref = np.linspace(0, tel['dist'].max(), 1000)
+                return pd.DataFrame({
+                    'distance': ref, 
+                    'speed': np.interp(ref, tel['dist'], tel['speed']), 
+                    'throttle': np.interp(ref, tel['dist'], tel['throttle'])
+                }), duration, tel['dist'].max()
+            except Exception:
+                continue
+
+    # Fallback if no laps have valid telemetry
+    return pd.DataFrame(), 0, 0
 
 # --- 3. UI & CONTROL ---
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
@@ -111,8 +135,9 @@ if not meetings.empty:
         d1_n = drivers[drivers['full_name'].str.title() == d1_name]['driver_number'].iloc[0]
         d2_n = drivers[drivers['full_name'].str.title() == d2_name]['driver_number'].iloc[0]
         
-        df1, lap1, len1 = get_telemetry(d1_n, d2_n, s_key, sim, 1, 0)
-        df2, lap2, len2 = get_telemetry(d2_n, d1_n, s_key, sim, 2, 5)
+        with st.spinner("Extracting & Normalizing Telemetry..."):
+            df1, lap1, len1 = get_telemetry(d1_n, d2_n, s_key, sim, 1, 0)
+            df2, lap2, len2 = get_telemetry(d2_n, d1_n, s_key, sim, 2, 5)
 
         if not df1.empty and not df2.empty:
             common = min(len(df1), len(df2))
@@ -133,12 +158,21 @@ if not meetings.empty:
                 if i > 0: fig.add_trace(go.Scatter(x=df2['distance'], y=df2.iloc[:, i], name=d2_name, line=dict(color='#FF00FF')))
                 fig.update_layout(title=dict(text=title, x=0.05, font=dict(color='#FF1801', size=14, family="Segoe UI")), xaxis=dict(title="Distance (m)"), yaxis=dict(title=y_labels[i]), template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40))
                 st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.markdown("""
+            <div class='warning-box'>
+                <b>⚠️ Data Quality Alert: Telemetry Incomplete</b><br>
+                The live API returned fragmented or missing sensor data for one of these drivers during their fastest lap. 
+                Rather than rendering inaccurate charts, the dashboard has paused.<br><br>
+                <i>Please select a different driver pair, or switch to <b>Simulation Mode</b>.</i>
+            </div>
+            """, unsafe_allow_html=True)
 
 with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
     st.markdown("""
     ### How to Read These Plots:
     - Time Delta: A negative value (Green) means your primary driver is pulling away. Positive (Red) means they are losing time.
-    - Spatial Gap: Calculates the physical track separation (in meters) between drivers. This surfaces exact corner-entry and exit points where the performance gap widens or closes—like braking late into a corner or getting a better exit—decoupling raw speed from position.
+    - Spatial Gap: This shows the net time difference across the whole track. Think of this as the "Ghost Car" gap—a positive slope means you're gaining ground, while a dip shows where you're bleeding time.
     - Telemetry: These plots are synced to distance, not time. This is how engineers find exactly where a driver is braking too early or missing the exit power.
 
     ### Metric Breakdown:
