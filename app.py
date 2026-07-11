@@ -172,6 +172,11 @@ if not meetings.empty:
                 <i>Please select a different driver pair, or switch to <b>Simulation Mode</b>.</i>
             </div>
             """, unsafe_allow_html=True)
+            
+    # ---> THIS IS THE FIX: Prevents the UI from silently failing/vanishing <---
+    else:
+        st.sidebar.error("⚠️ Driver list unavailable for this session from the OpenF1 servers.")
+        st.sidebar.info("Try selecting a different Session or Grand Prix.")
 
 with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
     st.markdown("""
