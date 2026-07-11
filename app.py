@@ -58,15 +58,12 @@ def get_telemetry(d1_n, d2_n, s_key, sim, d_id, offset=0):
         return pd.DataFrame({'distance': dist, 'speed': speed, 'throttle': throttle}), 85.0, 4000.0
     
     laps = get_openf1("laps", {"session_key": s_key, "driver_number": d1_n})
-    # Check if laps exist and have a valid duration
     if laps.empty or 'lap_duration' not in laps.columns: return pd.DataFrame(), 0, 0
     
-    # Clean the laps dataframe to prevent NaN crashes
     laps['lap_duration'] = pd.to_numeric(laps['lap_duration'], errors='coerce')
     laps = laps.dropna(subset=['lap_duration', 'date_start'])
     if laps.empty: return pd.DataFrame(), 0, 0
     
-    # Iterate through fastest laps until we find one WITH complete telemetry
     laps = laps.sort_values('lap_duration')
     
     for _, f_lap in laps.iterrows():
@@ -82,7 +79,6 @@ def get_telemetry(d1_n, d2_n, s_key, sim, d_id, offset=0):
         end = start + pd.Timedelta(seconds=duration)
         tel = get_openf1(f"car_data?session_key={s_key}&driver_number={d1_n}&date>={start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}&date<={end.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]}")
         
-        # Verify telemetry has enough data points AND distance before returning
         if not tel.empty and 'date' in tel.columns and len(tel) > 100:
             try:
                 tel['date'] = pd.to_datetime(tel['date'])
@@ -90,7 +86,6 @@ def get_telemetry(d1_n, d2_n, s_key, sim, d_id, offset=0):
                 tel['dt'] = tel['date'].diff().dt.total_seconds().fillna(0)
                 tel['dist'] = ((tel['speed']/3.6) * tel['dt']).cumsum()
                 
-                # Must be a reasonably complete lap (e.g. > 2000 meters) to avoid interpolation errors
                 if tel['dist'].max() < 2000.0:
                     continue
                     
@@ -103,7 +98,6 @@ def get_telemetry(d1_n, d2_n, s_key, sim, d_id, offset=0):
             except Exception:
                 continue
 
-    # Fallback if no laps have valid telemetry
     return pd.DataFrame(), 0, 0
 
 # --- 3. UI & CONTROL ---
@@ -123,8 +117,20 @@ if not meetings.empty:
         
     s_name = st.sidebar.selectbox("Session", s_data['session_name'].unique())
     s_key = s_data[s_data['session_name'] == s_name]['session_key'].iloc[0]
+    
+    # Fetch drivers
     drivers = get_openf1("drivers", {"session_key": s_key})
     
+    # ---> FIX: OFFLINE FALLBACK ROSTER <---
+    # If API times out and returns no drivers, inject an offline roster so the UI never vanishes
+    if drivers.empty or 'full_name' not in drivers.columns:
+        st.sidebar.warning("⚠️ Live driver list timed out. Loaded offline roster for Simulation.")
+        drivers = pd.DataFrame({
+            'full_name': ['Max Verstappen', 'Lewis Hamilton', 'Charles Leclerc', 'Lando Norris', 'Oscar Piastri', 'George Russell', 'Carlos Sainz', 'Fernando Alonso'],
+            'driver_number': [1, 44, 16, 4, 81, 63, 55, 14]
+        })
+        api_healthy = False # Force the app to rely on Simulation Mode
+
     if not drivers.empty:
         d1_name = st.sidebar.selectbox("Driver A", sorted(drivers['full_name'].str.title().unique()))
         d2_name = st.sidebar.selectbox("Ref Driver", sorted(drivers['full_name'].str.title().unique()), index=1)
@@ -172,11 +178,6 @@ if not meetings.empty:
                 <i>Please select a different driver pair, or switch to <b>Simulation Mode</b>.</i>
             </div>
             """, unsafe_allow_html=True)
-            
-    # ---> THIS IS THE FIX: Prevents the UI from silently failing/vanishing <---
-    else:
-        st.sidebar.error("⚠️ Driver list unavailable for this session from the OpenF1 servers.")
-        st.sidebar.info("Try selecting a different Session or Grand Prix.")
 
 with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
     st.markdown("""
