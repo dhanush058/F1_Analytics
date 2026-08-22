@@ -110,7 +110,6 @@ year = st.sidebar.selectbox("Year", [2026, 2025, 2024], index=2)
 api_healthy = check_api_health()
 meetings = get_openf1("meetings", {"year": year})
 
-# ---> FIX: OFFLINE FALLBACK MEETINGS <---
 if meetings.empty or 'meeting_name' not in meetings.columns:
     meetings = pd.DataFrame({
         'meeting_name': ['Australian Grand Prix', 'Bahrain Grand Prix', 'Saudi Arabian Grand Prix', 'Monaco Grand Prix', 'British Grand Prix'],
@@ -123,24 +122,26 @@ st.markdown("<div class='main-title'>Formula 1 Telemetry Analysis</div>", unsafe
 if not meetings.empty:
     gp_raw = st.sidebar.selectbox("GP", meetings['meeting_name'].unique())
     
-    # Fetch session data with fallback safety
     matched_meeting = meetings[meetings['meeting_name'] == gp_raw]
     meeting_key = matched_meeting['meeting_key'].iloc[0] if not matched_meeting.empty else 1231
     s_data = get_openf1("sessions", {"meeting_key": meeting_key})
     
+    # ---> CUSTOM ERROR: FUTURE GP / NO SESSIONS YET <---
     if s_data.empty or 'session_name' not in s_data.columns:
-        s_data = pd.DataFrame({
-            'session_name': ['Practice 1', 'Qualifying', 'Race'],
-            'session_key': [9991, 9992, 9993]
-        })
+        st.markdown("""
+        <div class='warning-box'>
+            <b>⚠️ Grand Prix not yet happened</b><br>
+            No session records or telemetry pipelines are initialized for the <b>{} {}</b>. 
+            Please select a completed past event or enable Simulation Mode.
+        </div>
+        """.format(year, gp_raw), unsafe_allow_html=True)
+        st.stop()
         
     s_name = st.sidebar.selectbox("Session", s_data['session_name'].unique())
     s_key = s_data[s_data['session_name'] == s_name]['session_key'].iloc[0]
     
-    # Fetch drivers
     drivers = get_openf1("drivers", {"session_key": s_key})
     
-    # Offline fallback roster
     if drivers.empty or 'full_name' not in drivers.columns:
         st.sidebar.warning("⚠️ Live driver list timed out. Loaded offline roster for Simulation.")
         drivers = pd.DataFrame({
@@ -188,14 +189,14 @@ if not meetings.empty:
                 fig.update_layout(title=dict(text=title, x=0.05, font=dict(color='#FF1801', size=14, family="Segoe UI")), xaxis=dict(title="Distance (m)"), yaxis=dict(title=y_labels[i]), template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40))
                 st.plotly_chart(fig, use_container_width=True)
         else:
+            # ---> CUSTOM ERROR: DRIVER DATA UNAVAILABLE <---
             st.markdown("""
             <div class='warning-box'>
-                <b>⚠️ Data Quality Alert: Telemetry Incomplete</b><br>
-                The live API returned fragmented or missing sensor data for one of these drivers during their fastest lap. 
-                Rather than rendering inaccurate charts, the dashboard has paused.<br><br>
-                <i>Please select a different driver pair, or switch to <b>Simulation Mode</b>.</i>
+                <b>⚠️ Driver data for this session not available</b><br>
+                The selected driver combination (<b>{}</b> vs <b>{}</b>) has incomplete or missing telemetry records for this specific session.<br><br>
+                <i>Please choose a different driver pair or switch to <b>Simulation Mode</b>.</i>
             </div>
-            """, unsafe_allow_html=True)
+            """.format(d1_name, d2_name), unsafe_allow_html=True)
 
 with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
     st.markdown("""
