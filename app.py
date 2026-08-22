@@ -105,15 +105,29 @@ year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
 api_healthy = check_api_health()
 meetings = get_openf1("meetings", {"year": year})
 
+# ---> FIX: OFFLINE FALLBACK MEETINGS <---
+if meetings.empty or 'meeting_name' not in meetings.columns:
+    meetings = pd.DataFrame({
+        'meeting_name': ['Australian Grand Prix', 'Bahrain Grand Prix', 'Saudi Arabian Grand Prix', 'Monaco Grand Prix', 'British Grand Prix'],
+        'meeting_key': [1231, 1232, 1233, 1234, 1235]
+    })
+    api_healthy = False
+
 st.markdown("<div class='main-title'>Formula 1 Telemetry Analysis</div>", unsafe_allow_html=True)
 
 if not meetings.empty:
     gp_raw = st.sidebar.selectbox("GP", meetings['meeting_name'].unique())
-    s_data = get_openf1("sessions", {"meeting_key": meetings[meetings['meeting_name'] == gp_raw]['meeting_key'].iloc[0]})
+    
+    # Fetch session data with fallback safety
+    matched_meeting = meetings[meetings['meeting_name'] == gp_raw]
+    meeting_key = matched_meeting['meeting_key'].iloc[0] if not matched_meeting.empty else 1231
+    s_data = get_openf1("sessions", {"meeting_key": meeting_key})
     
     if s_data.empty or 'session_name' not in s_data.columns:
-        st.warning(f"⚠️ No session data available yet for the {year} {gp_raw}. This usually means the race has not taken place yet.")
-        st.stop()
+        s_data = pd.DataFrame({
+            'session_name': ['Practice 1', 'Qualifying', 'Race'],
+            'session_key': [9991, 9992, 9993]
+        })
         
     s_name = st.sidebar.selectbox("Session", s_data['session_name'].unique())
     s_key = s_data[s_data['session_name'] == s_name]['session_key'].iloc[0]
@@ -121,15 +135,14 @@ if not meetings.empty:
     # Fetch drivers
     drivers = get_openf1("drivers", {"session_key": s_key})
     
-    # ---> FIX: OFFLINE FALLBACK ROSTER <---
-    # If API times out and returns no drivers, inject an offline roster so the UI never vanishes
+    # Offline fallback roster
     if drivers.empty or 'full_name' not in drivers.columns:
         st.sidebar.warning("⚠️ Live driver list timed out. Loaded offline roster for Simulation.")
         drivers = pd.DataFrame({
             'full_name': ['Max Verstappen', 'Lewis Hamilton', 'Charles Leclerc', 'Lando Norris', 'Oscar Piastri', 'George Russell', 'Carlos Sainz', 'Fernando Alonso'],
             'driver_number': [1, 44, 16, 4, 81, 63, 55, 14]
         })
-        api_healthy = False # Force the app to rely on Simulation Mode
+        api_healthy = False
 
     if not drivers.empty:
         d1_name = st.sidebar.selectbox("Driver A", sorted(drivers['full_name'].str.title().unique()))
