@@ -45,7 +45,12 @@ def get_openf1(endpoint, params=None):
     try:
         headers = {'User-Agent': 'F1-PitWall-Analytics/2.0'}
         res = requests.get(f"https://api.openf1.org/v1/{endpoint}", params=params, headers=headers, timeout=10)
-        return pd.DataFrame(res.json()) if res.status_code == 200 else pd.DataFrame()
+        if res.status_code == 200:
+            data = res.json()
+            if isinstance(data, dict) and "detail" in data:
+                return pd.DataFrame()
+            return pd.DataFrame(data) if isinstance(data, list) else pd.DataFrame()
+        return pd.DataFrame()
     except: return pd.DataFrame()
 
 def get_telemetry(d1_n, d2_n, s_key, sim, d_id, offset=0):
@@ -101,7 +106,7 @@ def get_telemetry(d1_n, d2_n, s_key, sim, d_id, offset=0):
     return pd.DataFrame(), 0, 0
 
 # --- 3. UI & CONTROL ---
-year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
+year = st.sidebar.selectbox("Year", [2026, 2025, 2024], index=2)
 api_healthy = check_api_health()
 meetings = get_openf1("meetings", {"year": year})
 
