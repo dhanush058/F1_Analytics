@@ -126,15 +126,30 @@ if not meetings.empty:
     meeting_key = matched_meeting['meeting_key'].iloc[0] if not matched_meeting.empty else 1231
     s_data = get_openf1("sessions", {"meeting_key": meeting_key})
     
-    # ---> CUSTOM ERROR: FUTURE GP / NO SESSIONS YET <---
+    # ---> CUSTOM ERROR: FUTURE GP / NO SESSIONS YET (or empty date_start) <---
+    is_future_gp = False
     if s_data.empty or 'session_name' not in s_data.columns:
-        st.markdown("""
+        is_future_gp = True
+    else:
+        # Check if sessions have valid past start dates or are missing date info
+        if 'date_start' in s_data.columns:
+            try:
+                s_data['date_start'] = pd.to_datetime(s_data['date_start'], errors='coerce')
+                if s_data['date_start'].dropna().empty or (s_data['date_start'].dropna() > pd.Timestamp.now()).all():
+                    is_future_gp = True
+            except:
+                pass
+        else:
+            is_future_gp = True
+
+    if is_future_gp:
+        st.markdown(f"""
         <div class='warning-box'>
             <b>⚠️ Grand Prix not yet happened</b><br>
-            No session records or telemetry pipelines are initialized for the <b>{} {}</b>. 
+            No session records or telemetry pipelines are initialized for the <b>{year} {gp_raw}</b>. 
             Please select a completed past event or enable Simulation Mode.
         </div>
-        """.format(year, gp_raw), unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
         st.stop()
         
     s_name = st.sidebar.selectbox("Session", s_data['session_name'].unique())
@@ -190,13 +205,13 @@ if not meetings.empty:
                 st.plotly_chart(fig, use_container_width=True)
         else:
             # ---> CUSTOM ERROR: DRIVER DATA UNAVAILABLE <---
-            st.markdown("""
+            st.markdown(f"""
             <div class='warning-box'>
                 <b>⚠️ Driver data for this session not available</b><br>
-                The selected driver combination (<b>{}</b> vs <b>{}</b>) has incomplete or missing telemetry records for this specific session.<br><br>
+                The selected driver combination (<b>{d1_name}</b> vs <b>{d2_name}</b>) has incomplete or missing telemetry records for this specific session.<br><br>
                 <i>Please choose a different driver pair or switch to <b>Simulation Mode</b>.</i>
             </div>
-            """.format(d1_name, d2_name), unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
 with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
     st.markdown("""
