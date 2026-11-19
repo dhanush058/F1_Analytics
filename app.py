@@ -243,16 +243,26 @@ if not meetings.empty:
 with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
     st.markdown("""
     ### How to Read These Plots:
-- Spatial Gap Analysis: Tracks the cumulative time gap across track distance—a negative value (Green) means your primary driver is pulling away, while a positive value (Red) means they are losing time.
+- Spatial Gap Analysis: Tracks the cumulative time gap across track distance—a negative value (Green) means your primary driver is pulling away, while a positive value (Red) means they are losing time. Upward/downward shifts show where time is gained or lost along the lap.
+- Speed Comparison: Compares top-end straight speed and corner entry/exit velocity side by side across the lap so you can spot traction or drag differences.
+- Throttle Application: Shows how early and smoothly each driver gets back on full power after braking zones or corners.
 - Telemetry: These plots are synced to distance, not time. This is how engineers find exactly where a driver is braking too early or missing the exit power.
 
     ### Metric Breakdown:
+- Driver Top Speed Cards: Show peak recorded speed (`KM/H`) for each driver alongside the relative speed difference (`+/-`) against the other driver.
 - Lap Delta: The bottom line—how many seconds faster or slower the driver is compared to the benchmark.
 - Peak Gap: Your diagnostic tool for maximum swing—shows the largest time advantage or deficit reached along the lap, helping pinpoint where the biggest gain or loss happened.
+- Pipeline Indicator: Shows whether the dashboard is currently running on `LIVE` telemetry or fallback `SIM` mode.
 
     ### Technical Architecture:
 - The Pipeline: Built to be "pit-wall proof." If the live API heartbeat stops, the app automatically pivots to a high-fidelity simulation, keeping the dashboard alive.
 - Normalization: We use `numpy.interp` to map messy F1 sensor data onto a fixed 4km track distance for a perfect apple-to-apple comparison.
+- Lap Selection: Queries session lap records, filters out incomplete or missing timing/telemetry runs, and evaluates the fastest clean laps for comparison.
+
+    ### Practical Applications:
+- Qualifying & Race Prep: Helps compare two drivers' fastest laps to isolate whether pace differences come from high-speed straights, braking zones, or corner exits.
+- Setup & Driving Diagnostics: Pinpoints where a driver loses time repeatedly on a circuit—such as late throttle pickup or lower minimum corner speed—to guide setup or driving adjustments.
+- Broadcast & Post-Session Review: Turns raw telemetry feeds into clear, distance-aligned visuals for rapid post-session debriefs and storytelling.
 
     ### Data Governance:
 - Fail-Safe Logic: Every request has a strict timeout, so a slow server never hangs your UI.
