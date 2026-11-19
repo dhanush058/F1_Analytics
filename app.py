@@ -222,12 +222,23 @@ if not meetings.empty:
             else:
                 driver_factor = "closely matched speed and throttle profiles across the lap"
 
+            if lap_diff < -0.005 and avg_speed_diff <= 0.5 and avg_throttle_diff <= 0.5:
+                takeaway_text = f"highlights marginal gains across corners/braking rather than raw straight-line or average throttle dominance for {d1_name}."
+            elif lap_diff > 0.005 and avg_speed_diff >= -0.5 and avg_throttle_diff >= -0.5:
+                takeaway_text = f"points to time lost in specific braking or corner-exit zones despite competitive average speed and throttle from {d1_name}."
+            elif abs(avg_throttle_diff) >= 0.5:
+                throttle_leader = d1_name if avg_throttle_diff > 0 else d2_name
+                takeaway_text = f"shows traction and corner-exit power delivery ({throttle_leader} {avg_throttle_diff:+.2f}% avg throttle) as a key differentiator."
+            else:
+                takeaway_text = f"shows cumulative section pace and top-end speed ({top_diff:+.0f} km/h peak diff) shaping the final gap."
+
             mode_label = "Simulation" if sim else "Live"
             st.markdown(
                 f"<div style='color:#CCCCCC; font-size:0.95rem; margin: 10px 0 18px 0;'>"
                 f"<strong style='color:#FF1801;'>Quick Summary ({year} {gp_raw} — {s_name}, {mode_label}):</strong> "
                 f"<b>{d1_name}</b> is {pace_text} vs. <b>{d2_name}</b>, driven mainly by {driver_factor}, "
-                f"with a peak gap swing of <b>{peak_gap:+.2f} s</b> ({peak_direction} by {d1_name}) near <b>{peak_dist:,.0f} m</b>."
+                f"with a peak gap swing of <b>{peak_gap:+.2f} s</b> ({peak_direction} by {d1_name}) near <b>{peak_dist:,.0f} m</b>; "
+                f"overall this {takeaway_text}"
                 f"</div>",
                 unsafe_allow_html=True
             )
