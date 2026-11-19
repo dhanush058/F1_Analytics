@@ -196,17 +196,41 @@ if not meetings.empty:
             m4.metric("PEAK GAP", f"{peak_gap:+.3f} S", delta=f"{peak_gap:+.3f}", delta_color="inverse")
             m5.metric("PIPELINE", "SIM" if sim else "LIVE")
 
-            breakdown_df = pd.DataFrame({
-                "Metric": ["Peak Speed (km/h)", "Avg Speed (km/h)", "Avg Throttle (%)"],
-                d1_name: [f"{df1['speed'].max():.2f}", f"{df1['speed'].mean():.2f}", f"{df1['throttle'].mean():.2f}"],
-                d2_name: [f"{df2['speed'].max():.2f}", f"{df2['speed'].mean():.2f}", f"{df2['throttle'].mean():.2f}"],
-                "Delta (A - Ref)": [
-                    f"{df1['speed'].max() - df2['speed'].max():+.2f}",
-                    f"{df1['speed'].mean() - df2['speed'].mean():+.2f}",
-                    f"{df1['throttle'].mean() - df2['throttle'].mean():+.2f}"
-                ]
-            })
-            st.dataframe(breakdown_df, use_container_width=True, hide_index=True)
+            lap_diff = lap1 - lap2
+            if abs(lap_diff) < 0.005:
+                pace_text = f"virtually matched on lap time ({lap_diff:+.3f} s)"
+            elif lap_diff < 0:
+                pace_text = f"faster overall by {abs(lap_diff):.3f} s"
+            else:
+                pace_text = f"slower overall by {lap_diff:.3f} s"
+
+            top_diff = df1['speed'].max() - df2['speed'].max()
+            avg_speed_diff = df1['speed'].mean() - df2['speed'].mean()
+            avg_throttle_diff = df1['throttle'].mean() - df2['throttle'].mean()
+            peak_dist = df1['distance'].values[:common][np.argmax(np.abs(delta))]
+            peak_direction = "gained" if peak_gap < 0 else "lost"
+
+            if abs(avg_speed_diff) >= abs(avg_throttle_diff) * 0.5 and abs(avg_speed_diff) >= 0.5:
+                leader = d1_name if avg_speed_diff > 0 else d2_name
+                driver_factor = f"higher average speed ({abs(avg_speed_diff):.2f} km/h) led by {leader}"
+            elif abs(avg_throttle_diff) >= 0.5:
+                leader = d1_name if avg_throttle_diff > 0 else d2_name
+                driver_factor = f"higher average throttle ({abs(avg_throttle_diff):.2f}%) led by {leader}"
+            elif abs(top_diff) >= 1.0:
+                leader = d1_name if top_diff > 0 else d2_name
+                driver_factor = f"top speed edge ({abs(top_diff):.0f} km/h) for {leader}"
+            else:
+                driver_factor = "closely matched speed and throttle profiles across the lap"
+
+            mode_label = "Simulation" if sim else "Live"
+            st.markdown(
+                f"<div style='color:#CCCCCC; font-size:0.95rem; margin: 10px 0 18px 0;'>"
+                f"<strong style='color:#FF1801;'>Quick Summary ({year} {gp_raw} — {s_name}, {mode_label}):</strong> "
+                f"<b>{d1_name}</b> is {pace_text} vs. <b>{d2_name}</b>, driven mainly by {driver_factor}, "
+                f"with a peak gap swing of <b>{peak_gap:+.2f} s</b> ({peak_direction} by {d1_name}) near <b>{peak_dist:,.0f} m</b>."
+                f"</div>",
+                unsafe_allow_html=True
+            )
 
             titles = ["Spatial Gap Analysis", "Speed Comparison", "Throttle Application"]
             y_labels = ["Delta (s)", "Speed (km/h)", "Throttle (%)"]
