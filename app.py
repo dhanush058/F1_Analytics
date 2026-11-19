@@ -197,7 +197,7 @@ if not meetings.empty:
 
             titles = ["Time Delta", "Speed Comparison", "Throttle Application"]
             y_labels = ["Delta (s)", "Speed (km/h)", "Throttle (%)"]
-            hover_formats = ["+.3f s", ".3f km/h", ".3f %"]
+            hover_formats = ["+.2f s", ".2f km/h", ".2f %"]
             hover_names = ["Delta", "Speed", "Throttle"]
             for i, title in enumerate(titles):
                 fig = go.Figure()
