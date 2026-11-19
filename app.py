@@ -196,6 +196,18 @@ if not meetings.empty:
             m4.metric("PEAK GAP", f"{peak_gap:+.3f} S", delta=f"{peak_gap:+.3f}", delta_color="inverse")
             m5.metric("PIPELINE", "SIM" if sim else "LIVE")
 
+            breakdown_df = pd.DataFrame({
+                "Metric": ["Peak Speed (km/h)", "Avg Speed (km/h)", "Avg Throttle (%)"],
+                d1_name: [f"{df1['speed'].max():.2f}", f"{df1['speed'].mean():.2f}", f"{df1['throttle'].mean():.2f}"],
+                d2_name: [f"{df2['speed'].max():.2f}", f"{df2['speed'].mean():.2f}", f"{df2['throttle'].mean():.2f}"],
+                "Delta (A - Ref)": [
+                    f"{df1['speed'].max() - df2['speed'].max():+.2f}",
+                    f"{df1['speed'].mean() - df2['speed'].mean():+.2f}",
+                    f"{df1['throttle'].mean() - df2['throttle'].mean():+.2f}"
+                ]
+            })
+            st.dataframe(breakdown_df, use_container_width=True, hide_index=True)
+
             titles = ["Spatial Gap Analysis", "Speed Comparison", "Throttle Application"]
             y_labels = ["Delta (s)", "Speed (km/h)", "Throttle (%)"]
             hover_formats = ["+.2f", ".2f", ".2f"]
@@ -203,13 +215,14 @@ if not meetings.empty:
             hover_names = ["Delta", "Speed", "Throttle"]
             for i, title in enumerate(titles):
                 fig = go.Figure()
+                driver_label = f"{d1_name} vs. {d2_name}" if i == 0 else d1_name
                 fig.add_trace(go.Scatter(
                     x=df1['distance'][:common],
                     y=delta if i==0 else df1.iloc[:, i],
                     name=d1_name,
                     line=dict(color='#00FFFF'),
                     hovertemplate=(
-                        f"<b>Driver: {d1_name}</b><br>"
+                        f"<b>Driver: {driver_label}</b><br>"
                         "Distance: %{x:,.1f} m<br>"
                         f"{hover_names[i]}: %{{y:{hover_formats[i]}}} {hover_units[i]}"
                         "<extra></extra>"
