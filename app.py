@@ -256,7 +256,7 @@ with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
 
     ### Technical Architecture:
 - The Pipeline: Built to be "pit-wall proof." If the live API heartbeat stops, the app automatically pivots to a high-fidelity simulation, keeping the dashboard alive.
-- Normalization: We use `numpy.interp` to map messy F1 sensor data onto a fixed 4km track distance for a perfect apple-to-apple comparison.
+- Normalization: We use `numpy.interp` to map messy F1 sensor data onto a uniform distance grid across the lap (around ~5km on typical circuits with minor ~0.2–0.3km variance, or 4km in simulation mode) for a clean comparison.
 - Lap Selection: Queries session lap records, filters out incomplete or missing timing/telemetry runs, and evaluates the fastest clean laps for comparison.
 
     ### Practical Applications:
