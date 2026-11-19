@@ -197,7 +197,8 @@ if not meetings.empty:
 
             titles = ["Time Delta", "Speed Comparison", "Throttle Application"]
             y_labels = ["Delta (s)", "Speed (km/h)", "Throttle (%)"]
-            hover_formats = ["+.2f s", ".2f km/h", ".2f %"]
+            hover_formats = ["+.2f", ".2f", ".2f"]
+            hover_units = ["s", "km/h", "%"]
             hover_names = ["Delta", "Speed", "Throttle"]
             for i, title in enumerate(titles):
                 fig = go.Figure()
@@ -209,7 +210,7 @@ if not meetings.empty:
                     hovertemplate=(
                         f"<b>Driver: {d1_name}</b><br>"
                         "Distance: %{x:,.1f} m<br>"
-                        f"{hover_names[i]}: %{{y:{hover_formats[i]}}}"
+                        f"{hover_names[i]}: %{{y:{hover_formats[i]}}} {hover_units[i]}"
                         "<extra></extra>"
                     )
                 ))
@@ -222,7 +223,7 @@ if not meetings.empty:
                         hovertemplate=(
                             f"<b>Driver: {d2_name}</b><br>"
                             "Distance: %{x:,.1f} m<br>"
-                            f"{hover_names[i]}: %{{y:{hover_formats[i]}}}"
+                            f"{hover_names[i]}: %{{y:{hover_formats[i]}}} {hover_units[i]}"
                             "<extra></extra>"
                         )
                     ))
