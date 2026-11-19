@@ -197,10 +197,35 @@ if not meetings.empty:
 
             titles = ["Time Delta", "Speed Comparison", "Throttle Application"]
             y_labels = ["Delta (s)", "Speed (km/h)", "Throttle (%)"]
+            hover_formats = ["+.3f s", ".1f km/h", ".1f %"]
+            hover_names = ["Delta", "Speed", "Throttle"]
             for i, title in enumerate(titles):
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df1['distance'][:common], y=delta if i==0 else df1.iloc[:, i], name=d1_name, line=dict(color='#00FFFF')))
-                if i > 0: fig.add_trace(go.Scatter(x=df2['distance'], y=df2.iloc[:, i], name=d2_name, line=dict(color='#FF00FF')))
+                fig.add_trace(go.Scatter(
+                    x=df1['distance'][:common],
+                    y=delta if i==0 else df1.iloc[:, i],
+                    name=d1_name,
+                    line=dict(color='#00FFFF'),
+                    hovertemplate=(
+                        f"<b>Driver: {d1_name}</b><br>"
+                        "Distance: %{x:,.1f} m<br>"
+                        f"{hover_names[i]}: %{{y:{hover_formats[i]}}}"
+                        "<extra></extra>"
+                    )
+                ))
+                if i > 0:
+                    fig.add_trace(go.Scatter(
+                        x=df2['distance'],
+                        y=df2.iloc[:, i],
+                        name=d2_name,
+                        line=dict(color='#FF00FF'),
+                        hovertemplate=(
+                            f"<b>Driver: {d2_name}</b><br>"
+                            "Distance: %{x:,.1f} m<br>"
+                            f"{hover_names[i]}: %{{y:{hover_formats[i]}}}"
+                            "<extra></extra>"
+                        )
+                    ))
                 fig.update_layout(title=dict(text=title, x=0.05, font=dict(color='#FF1801', size=14, family="Segoe UI")), xaxis=dict(title="Distance (m)"), yaxis=dict(title=y_labels[i]), template="plotly_dark", height=300, margin=dict(l=50, r=20, t=50, b=40))
                 st.plotly_chart(fig, use_container_width=True)
         else:
