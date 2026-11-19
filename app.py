@@ -191,8 +191,8 @@ if not meetings.empty:
             m1, m2, m3, m4, m5 = st.columns(5)
             m1.metric(d1_name.split()[-1].upper(), f"{df1['speed'].max():.0f} KM/H", f"{df1['speed'].max()-df2['speed'].max():+.0f}")
             m2.metric(d2_name.split()[-1].upper(), f"{df2['speed'].max():.0f} KM/H", f"{df2['speed'].max()-df1['speed'].max():+.0f}")
-            m3.metric("LAP DELTA", f"{lap1-lap2:+.3f} S", delta=f"{lap2-lap1:+.3f}", delta_color="inverse")
-            m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="normal")
+            m3.metric("LAP DELTA", f"{lap1-lap2:+.3f} S", delta=f"{lap1-lap2:+.3f}", delta_color="inverse")
+            m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="inverse")
             m5.metric("PIPELINE", "SIM" if sim else "LIVE")
 
             titles = ["Time Delta", "Speed Comparison", "Throttle Application"]
@@ -216,19 +216,19 @@ if not meetings.empty:
 with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
     st.markdown("""
     ### How to Read These Plots:
-    - Time Delta: A negative value (Green) means your primary driver is pulling away. Positive (Red) means they are losing time.
-    - Spatial Gap: This shows the net time difference across the whole track. Think of this as the "Ghost Car" gap—a positive slope means you're gaining ground, while a dip shows where you're bleeding time.
-    - Telemetry: These plots are synced to distance, not time. This is how engineers find exactly where a driver is braking too early or missing the exit power.
+- Time Delta: A negative value (Green) means your primary driver is pulling away. Positive (Red) means they are losing time.
+- Spatial Gap: This shows the net time difference across the whole track. Think of this as the "Ghost Car" gap—a positive slope means you're gaining ground, while a dip shows where you're bleeding time.
+- Telemetry: These plots are synced to distance, not time. This is how engineers find exactly where a driver is braking too early or missing the exit power.
 
     ### Metric Breakdown:
-    - Lap Delta: The bottom line—how many seconds faster or slower the driver is compared to the benchmark.
-    - Spatial Gap: Your diagnostic tool. If you lose time on a straight, it's usually engine/aero. If you lose it in a corner, look for entry or braking errors.
+- Lap Delta: The bottom line—how many seconds faster or slower the driver is compared to the benchmark.
+- Spatial Gap: Your diagnostic tool. If you lose time on a straight, it's usually engine/aero. If you lose it in a corner, look for entry or braking errors.
 
     ### Technical Architecture:
-    - The Pipeline: Built to be "pit-wall proof." If the live API heartbeat stops, the app automatically pivots to a high-fidelity simulation, keeping the dashboard alive.
-    - Normalization: We use `numpy.interp` to map messy F1 sensor data onto a fixed 4km track distance for a perfect apple-to-apple comparison.
+- The Pipeline: Built to be "pit-wall proof." If the live API heartbeat stops, the app automatically pivots to a high-fidelity simulation, keeping the dashboard alive.
+- Normalization: We use `numpy.interp` to map messy F1 sensor data onto a fixed 4km track distance for a perfect apple-to-apple comparison.
 
     ### Data Governance:
-    - Fail-Safe Logic: Every request has a strict timeout, so a slow server never hangs your UI.
-    - Deterministic Simulation: We hash `session_key` and `driver_id` with `zlib.crc32` to generate a unique, repeatable "telemetry fingerprint."
+- Fail-Safe Logic: Every request has a strict timeout, so a slow server never hangs your UI.
+- Deterministic Simulation: We hash `session_key` and `driver_id` with `zlib.crc32` to generate a unique, repeatable "telemetry fingerprint."
     """)
