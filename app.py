@@ -187,15 +187,16 @@ if not meetings.empty:
         if not df1.empty and not df2.empty:
             common = min(len(df1), len(df2))
             delta = np.cumsum((1 / np.maximum(df2['speed'].values[:common]/3.6, 1)) - (1 / np.maximum(df1['speed'].values[:common]/3.6, 1))) * (max(len1, len2)/common)
+            peak_gap = delta[np.argmax(np.abs(delta))]
             
             m1, m2, m3, m4, m5 = st.columns(5)
             m1.metric(d1_name.split()[-1].upper(), f"{df1['speed'].max():.0f} KM/H", f"{df1['speed'].max()-df2['speed'].max():+.0f}")
             m2.metric(d2_name.split()[-1].upper(), f"{df2['speed'].max():.0f} KM/H", f"{df2['speed'].max()-df1['speed'].max():+.0f}")
             m3.metric("LAP DELTA", f"{lap1-lap2:+.3f} S", delta=f"{lap1-lap2:+.3f}", delta_color="inverse")
-            m4.metric("SPATIAL GAP", f"{delta[-1]:+.3f} S", delta=f"{delta[-1]:+.3f}", delta_color="inverse")
+            m4.metric("PEAK GAP", f"{peak_gap:+.3f} S", delta=f"{peak_gap:+.3f}", delta_color="inverse")
             m5.metric("PIPELINE", "SIM" if sim else "LIVE")
 
-            titles = ["Time Delta", "Speed Comparison", "Throttle Application"]
+            titles = ["Spatial Gap Analysis", "Speed Comparison", "Throttle Application"]
             y_labels = ["Delta (s)", "Speed (km/h)", "Throttle (%)"]
             hover_formats = ["+.2f", ".2f", ".2f"]
             hover_units = ["s", "km/h", "%"]
@@ -242,13 +243,12 @@ if not meetings.empty:
 with st.expander("📖 PIT-WALL ANALYTICS: COMPREHENSIVE GUIDE"):
     st.markdown("""
     ### How to Read These Plots:
-- Time Delta: A negative value (Green) means your primary driver is pulling away. Positive (Red) means they are losing time.
-- Spatial Gap: This shows the net time difference across the whole track. Think of this as the "Ghost Car" gap—a positive slope means you're gaining ground, while a dip shows where you're bleeding time.
+- Spatial Gap Analysis: Tracks the cumulative time gap across track distance—a negative value (Green) means your primary driver is pulling away, while a positive value (Red) means they are losing time.
 - Telemetry: These plots are synced to distance, not time. This is how engineers find exactly where a driver is braking too early or missing the exit power.
 
     ### Metric Breakdown:
 - Lap Delta: The bottom line—how many seconds faster or slower the driver is compared to the benchmark.
-- Spatial Gap: Your diagnostic tool. If you lose time on a straight, it's usually engine/aero. If you lose it in a corner, look for entry or braking errors.
+- Peak Gap: Your diagnostic tool for maximum swing—shows the largest time advantage or deficit reached along the lap, helping pinpoint where the biggest gain or loss happened.
 
     ### Technical Architecture:
 - The Pipeline: Built to be "pit-wall proof." If the live API heartbeat stops, the app automatically pivots to a high-fidelity simulation, keeping the dashboard alive.
