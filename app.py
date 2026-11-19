@@ -228,7 +228,7 @@ if not meetings.empty:
                 takeaway_text = f"points to time lost in specific braking or corner-exit zones despite competitive average speed and throttle from {d1_name}."
             elif abs(avg_throttle_diff) >= 0.5:
                 throttle_leader = d1_name if avg_throttle_diff > 0 else d2_name
-                takeaway_text = f"shows traction and corner-exit power delivery ({throttle_leader} {avg_throttle_diff:+.2f}% avg throttle) as a key differentiator."
+                takeaway_text = f"shows traction and corner-exit power delivery ({throttle_leader} +{abs(avg_throttle_diff):.2f}% avg throttle vs. {d1_name if throttle_leader == d2_name else d2_name}) as a key differentiator."
             else:
                 takeaway_text = f"shows cumulative section pace and top-end speed ({top_diff:+.0f} km/h peak diff) shaping the final gap."
 
