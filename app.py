@@ -204,7 +204,7 @@ if not meetings.empty:
             peak_direction = "gained" if peak_gap < 0 else "lost"
 
             if abs(lap_diff) < 0.005:
-                pace_clause = f"<b>{d1_name}</b> and <b>{d2_name}</b> are virtually matched on lap time ({lap_diff:+.3f} s)"
+                pace_clause = f"<b>{d1_name}</b> and <b>{d2_name}</b> are virtually matched on single-lap pace ({lap_diff:+.3f} s)"
                 if abs(avg_speed_diff) >= 0.5:
                     spd_leader = d1_name if avg_speed_diff > 0 else d2_name
                     spd_other = d2_name if avg_speed_diff > 0 else d1_name
@@ -217,7 +217,7 @@ if not meetings.empty:
                     factor_clause = f"with a {abs(top_diff):.0f} km/h peak speed edge for {top_leader}"
                 else:
                     factor_clause = "with closely matched speed and throttle profiles across the lap"
-                takeaway_text = "shows closely balanced overall pace where small section trade-offs cancel out over the lap."
+                takeaway_text = "shows closely balanced single-lap pace where small section trade-offs cancel out over the lap."
             else:
                 faster_driver = d1_name if lap_diff < 0 else d2_name
                 slower_driver = d2_name if lap_diff < 0 else d1_name
@@ -225,7 +225,7 @@ if not meetings.empty:
                 faster_avg_thr = avg_throttle_diff if lap_diff < 0 else -avg_throttle_diff
                 faster_top_spd = top_diff if lap_diff < 0 else -top_diff
 
-                pace_clause = f"<b>{faster_driver}</b> is faster overall by <b>{abs(lap_diff):.3f} s</b> vs. <b>{slower_driver}</b>"
+                pace_clause = f"<b>{faster_driver}</b> is faster on single-lap pace by <b>{abs(lap_diff):.3f} s</b> vs. <b>{slower_driver}</b>"
 
                 if faster_avg_spd >= 0.5:
                     factor_clause = f"driven mainly by a {faster_avg_spd:.2f} km/h higher average speed for {faster_driver}"
@@ -253,13 +253,24 @@ if not meetings.empty:
                 else:
                     takeaway_text = f"shows cumulative section pace and peak speed ({top_diff:+.0f} km/h {d1_name} vs. {d2_name}) shaping the final gap."
 
+            if "race" in s_name.lower() or "sprint" in s_name.lower():
+                scope_note = (
+                    f" Note: this compares each driver's fastest clean lap rather than full-{s_name.lower()} classification, "
+                    f"where pit strategy, tire wear, traffic, and grid position determine final finishing order."
+                )
+            else:
+                scope_note = (
+                    f" Note: this compares each driver's fastest clean telemetry lap in {s_name}, "
+                    f"which may differ from final session classification depending on track evolution, traffic, or lap deletions."
+                )
+
             mode_label = "Simulation" if sim else "Live"
             st.markdown(
                 f"<div style='color:#CCCCCC; font-size:0.95rem; margin: 10px 0 18px 0;'>"
                 f"<strong style='color:#FF1801;'>Quick Summary ({year} {gp_raw} — {s_name}, {mode_label}):</strong> "
                 f"{pace_clause}, {factor_clause}, "
                 f"with a peak gap swing of <b>{peak_gap:+.2f} s</b> ({peak_direction} by {d1_name}) near <b>{peak_dist:,.0f} m</b>; "
-                f"overall this {takeaway_text}"
+                f"overall this {takeaway_text}{scope_note}"
                 f"</div>",
                 unsafe_allow_html=True
             )
