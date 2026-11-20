@@ -255,12 +255,12 @@ if not meetings.empty:
 
             if "race" in s_name.lower() or "sprint" in s_name.lower():
                 scope_note = (
-                    f" Note: this compares each driver's fastest clean lap rather than full-{s_name.lower()} classification, "
+                    f"<br><strong style='color:#FF1801;'>Note:</strong> this compares each driver's fastest clean lap rather than full-{s_name.lower()} classification, "
                     f"where pit strategy, tire wear, traffic, and grid position determine final finishing order."
                 )
             else:
                 scope_note = (
-                    f" Note: this compares each driver's fastest clean telemetry lap in {s_name}, "
+                    f"<br><strong style='color:#FF1801;'>Note:</strong> this compares each driver's fastest clean telemetry lap in {s_name}, "
                     f"which may differ from final session classification depending on track evolution, traffic, or lap deletions."
                 )
 
